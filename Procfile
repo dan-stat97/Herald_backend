@@ -1,0 +1,1 @@
+web: gunicorn herald_backend.wsgi:application
