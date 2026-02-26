@@ -1,0 +1,64 @@
+# core/urls.py
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import (
+    ProfileViewSet, PostViewSet, LikeViewSet, RepostViewSet,
+    HashtagViewSet, TransactionViewSet, NewsViewSet,
+    CommunityViewSet, CauseViewSet, NotificationViewSet
+)
+from .comments_views import CommentViewSet
+from .social_views import FollowViewSet, BookmarkViewSet
+from .leaderboard_views import LeaderboardViewSet
+from .auth_views import signup, signout, current_user
+
+# Create v1 router
+router_v1 = DefaultRouter()
+router_v1.register(r'profiles', ProfileViewSet)
+router_v1.register(r'posts', PostViewSet)
+router_v1.register(r'likes', LikeViewSet)
+router_v1.register(r'reposts', RepostViewSet)
+router_v1.register(r'hashtags', HashtagViewSet)
+router_v1.register(r'transactions', TransactionViewSet)
+router_v1.register(r'news', NewsViewSet)
+router_v1.register(r'communities', CommunityViewSet)
+router_v1.register(r'causes', CauseViewSet)
+router_v1.register(r'notifications', NotificationViewSet)
+router_v1.register(r'comments', CommentViewSet, basename='comment')
+router_v1.register(r'bookmarks', BookmarkViewSet, basename='bookmark')
+
+# Follow endpoints (custom routes)
+follow_list = FollowViewSet.as_view({
+    'get': 'list',
+    'post': 'create'
+})
+
+urlpatterns = [
+    # Auth endpoints
+    path('v1/auth/signup/', signup, name='signup'),
+    path('v1/auth/signout/', signout, name='signout'),
+    path('v1/auth/user/', current_user, name='current_user'),
+    path('v1/auth/session/', current_user, name='session'),
+    
+    # Main v1 API endpoints
+    path('v1/', include(router_v1.urls)),
+    
+    # Follow endpoints
+    path('v1/users/<uuid:pk>/follow/', FollowViewSet.as_view({'post': 'follow'}), name='user-follow'),
+    path('v1/users/<uuid:pk>/unfollow/', FollowViewSet.as_view({'post': 'unfollow'}), name='user-unfollow'),
+    path('v1/users/<uuid:pk>/followers/', FollowViewSet.as_view({'get': 'followers'}), name='user-followers'),
+    path('v1/users/<uuid:pk>/following/', FollowViewSet.as_view({'get': 'following'}), name='user-following'),
+    path('v1/follow/check/', FollowViewSet.as_view({'get': 'check'}), name='follow-check'),
+    
+    # Bookmark endpoints
+    path('v1/posts/<uuid:pk>/bookmark/', BookmarkViewSet.as_view({'post': 'bookmark'}), name='post-bookmark'),
+    path('v1/posts/<uuid:pk>/unbookmark/', BookmarkViewSet.as_view({'post': 'unbookmark'}), name='post-unbookmark'),
+    path('v1/bookmarks/my/', BookmarkViewSet.as_view({'get': 'my_bookmarks'}), name='my-bookmarks'),
+    
+    # Leaderboard endpoints
+    path('v1/leaderboard/reputation/', LeaderboardViewSet.as_view({'get': 'reputation'}), name='leaderboard-reputation'),
+    path('v1/leaderboard/activity/', LeaderboardViewSet.as_view({'get': 'activity'}), name='leaderboard-activity'),
+    path('v1/leaderboard/earnings/', LeaderboardViewSet.as_view({'get': 'earnings'}), name='leaderboard-earnings'),
+    path('v1/leaderboard/me/', LeaderboardViewSet.as_view({'get': 'me'}), name='leaderboard-me'),
+    path('v1/posts/<pk>/like/', PostViewSet.as_view({'post': 'like'}), name='post-like'),
+    path('v1/posts/<pk>/unlike/', PostViewSet.as_view({'post': 'unlike'}), name='post-unlike'),
+]

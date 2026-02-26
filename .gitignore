@@ -1,0 +1,12 @@
+(
+  echo venv/
+  echo __pycache__/
+  echo "*.pyc"
+  echo ".env"
+  echo "db.sqlite3"
+  echo ".DS_Store"
+  echo "*.py[cod]"
+  echo "*$py.class"
+  echo ".vscode/"
+  echo ".idea/"
+) > .gitignore
