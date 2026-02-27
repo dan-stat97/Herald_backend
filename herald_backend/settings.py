@@ -23,10 +23,19 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'whitenoise.runserver_nostatic',
     'django.contrib.staticfiles',
-    'corsheaders',  # Make sure this is here
+    'corsheaders',
     'rest_framework',
     'django_extensions',
     'core',
+    'users',
+    'posts',
+    'wallets',
+    'communities',
+    'causes',
+    'notifications',
+    'leaderboard',
+    'adminpanel',
+    'estore',
 ]
 
 MIDDLEWARE = [

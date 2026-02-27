@@ -2,10 +2,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    ProfileViewSet, PostViewSet, LikeViewSet, RepostViewSet,
+    ProfileViewSet, LikeViewSet, RepostViewSet,
     HashtagViewSet, TransactionViewSet, NewsViewSet,
     CommunityViewSet, CauseViewSet, NotificationViewSet
 )
+from posts.views import PostViewSet
+from wallets.views import WalletViewSet
 from .comments_views import CommentViewSet
 from .social_views import FollowViewSet, BookmarkViewSet
 from .leaderboard_views import LeaderboardViewSet
@@ -14,7 +16,8 @@ from .auth_views import signup, signout, current_user
 # Create v1 router
 router_v1 = DefaultRouter()
 router_v1.register(r'profiles', ProfileViewSet)
-router_v1.register(r'posts', PostViewSet)
+router_v1.register(r'posts', PostViewSet, basename='post')
+router_v1.register(r'wallets', WalletViewSet, basename='wallet')
 router_v1.register(r'likes', LikeViewSet)
 router_v1.register(r'reposts', RepostViewSet)
 router_v1.register(r'hashtags', HashtagViewSet)
@@ -33,11 +36,8 @@ follow_list = FollowViewSet.as_view({
 })
 
 urlpatterns = [
-    # Auth endpoints
-    path('v1/auth/signup/', signup, name='signup'),
-    path('v1/auth/signout/', signout, name='signout'),
-    path('v1/auth/user/', current_user, name='current_user'),
-    path('v1/auth/session/', current_user, name='session'),
+    # Auth endpoints (from users app)
+    path('v1/auth/', include('users.urls')),
     
     # Main v1 API endpoints
     path('v1/', include(router_v1.urls)),

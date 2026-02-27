@@ -1,0 +1,978 @@
+openapi: 3.0.0
+info:
+  title: Herald Social API
+  description: Complete REST API specification for Herald Social mobile application
+  version: 1.0.0
+  contact:
+    name: Herald Team
+    url: https://heraldsocial.com
+  license:
+    name: MIT
+
+servers:
+  - url: https://herald-backend-ra5x.onrender.com/api/v1/
+    description: Production server
+  - url: https://staging-api.heraldsocial.com/v1
+    description: Staging server
+  - url: http://localhost:8000/v1
+    description: Development server
+
+components:
+  securitySchemes:
+    Bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token for authentication
+
+  schemas:
+    UUID:
+      type: string
+      format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+    User:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        username:
+          type: string
+          example: "johndoe"
+        display_name:
+          type: string
+          example: "John Doe"
+        full_name:
+          type: string
+          example: "John Michael Doe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+        bio:
+          type: string
+          nullable: true
+          example: "Software engineer and tech enthusiast"
+        tier:
+          type: string
+          enum: [free, creator, premium]
+          default: free
+        reputation:
+          type: integer
+          example: 8500
+        is_verified:
+          type: boolean
+          default: false
+        is_creator:
+          type: boolean
+          default: false
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Post:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        author_id:
+          $ref: '#/components/schemas/UUID'
+        author:
+          $ref: '#/components/schemas/User'
+        content:
+          type: string
+          example: "Just launched my new project!"
+        media_url:
+          type: string
+          format: uri
+          nullable: true
+        media_type:
+          type: string
+          enum: [image, video, reel]
+          nullable: true
+        likes_count:
+          type: integer
+          example: 42
+        comments_count:
+          type: integer
+          example: 5
+        shares_count:
+          type: integer
+          example: 3
+        httn_earned:
+          type: integer
+          example: 100
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Comment:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        post_id:
+          $ref: '#/components/schemas/UUID'
+        author_id:
+          $ref: '#/components/schemas/UUID'
+        author:
+          $ref: '#/components/schemas/User'
+        content:
+          type: string
+          example: "Great post!"
+        likes_count:
+          type: integer
+          example: 2
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Wallet:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        httn_points:
+          type: integer
+          example: 5000
+        httn_tokens:
+          type: number
+          format: decimal
+          example: 250.50
+        espees:
+          type: number
+          format: decimal
+          example: 1000.00
+        pending_rewards:
+          type: integer
+          example: 500
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Community:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        name:
+          type: string
+          example: "Tech Enthusiasts"
+        description:
+          type: string
+          nullable: true
+          example: "A community for tech lovers"
+        category:
+          type: string
+          example: "technology"
+        created_by:
+          $ref: '#/components/schemas/UUID'
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+        is_private:
+          type: boolean
+          default: false
+        member_count:
+          type: integer
+          example: 500
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Notification:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        notification_type:
+          type: string
+          enum: [like, comment, follow, share]
+        title:
+          type: string
+          example: "John liked your post"
+        message:
+          type: string
+          example: "This is a notification message"
+        related_resource_type:
+          type: string
+          example: "post"
+        related_resource_id:
+          $ref: '#/components/schemas/UUID'
+        read:
+          type: boolean
+          default: false
+        created_at:
+          type: string
+          format: date-time
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        password:
+          type: string
+          format: password
+          example: "securepassword123"
+
+    SignupRequest:
+      type: object
+      required:
+        - email
+        - password
+        - username
+        - display_name
+      properties:
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        password:
+          type: string
+          format: password
+          example: "securepassword123"
+        username:
+          type: string
+          example: "johndoe"
+        display_name:
+          type: string
+          example: "John Doe"
+        full_name:
+          type: string
+          nullable: true
+          example: "John Michael Doe"
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        access_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        token_type:
+          type: string
+          default: "Bearer"
+        expires_in:
+          type: integer
+          example: 3600
+
+    PaginationParams:
+      type: object
+      properties:
+        page:
+          type: integer
+          default: 1
+          example: 1
+        limit:
+          type: integer
+          default: 20
+          maximum: 100
+          example: 20
+        sort:
+          type: string
+          example: "-created_at"
+
+    PaginatedResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {}
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+              example: 1
+            limit:
+              type: integer
+              example: 20
+            total:
+              type: integer
+              example: 1000
+            total_pages:
+              type: integer
+              example: 50
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: "INVALID_REQUEST"
+            message:
+              type: string
+              example: "Missing required field: content"
+            details:
+              type: object
+              nullable: true
+
+paths:
+  /auth/signup:
+    post:
+      tags:
+        - Authentication
+      summary: User registration
+      description: Create a new user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/signin:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and get access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/user:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user
+      description: Get the authenticated user's profile
+      security:
+        - Bearer: []
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: Get current user profile
+      security:
+        - Bearer: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+
+    patch:
+      tags:
+        - Users
+      summary: Update current user profile
+      security:
+        - Bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name:
+                  type: string
+                bio:
+                  type: string
+                avatar_url:
+                  type: string
+                  format: uri
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+
+    delete:
+      tags:
+        - Users
+      summary: Delete current user account
+      security:
+        - Bearer: []
+      responses:
+        '204':
+          description: Account deleted
+        '401':
+          description: Unauthorized
+
+  /users/{user_id}:
+    get:
+      tags:
+        - Users
+      summary: Get user profile by ID
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+
+  /users/by-username/{username}:
+    get:
+      tags:
+        - Users
+      summary: Get user by username
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+
+  /users/{user_id}/follow:
+    post:
+      tags:
+        - Users
+      summary: Follow user
+      security:
+        - Bearer: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Follow successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  followers_count:
+                    type: integer
+
+    delete:
+      tags:
+        - Users
+      summary: Unfollow user
+      security:
+        - Bearer: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Unfollow successful
+
+  /posts:
+    get:
+      tags:
+        - Posts
+      summary: Get posts
+      description: Get feed of posts with pagination
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: sort
+          in: query
+          schema:
+            type: string
+            default: "-created_at"
+        - name: media_type
+          in: query
+          schema:
+            type: string
+            enum: [image, video, reel]
+      responses:
+        '200':
+          description: Posts list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Post'
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      total_pages:
+                        type: integer
+
+    post:
+      tags:
+        - Posts
+      summary: Create post
+      security:
+        - Bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  example: "My first post!"
+                media_url:
+                  type: string
+                  format: uri
+                media_type:
+                  type: string
+                  enum: [image, video, reel]
+      responses:
+        '201':
+          description: Post created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '401':
+          description: Unauthorized
+
+  /posts/{post_id}:
+    get:
+      tags:
+        - Posts
+      summary: Get post by ID
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Post details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '404':
+          description: Post not found
+
+    delete:
+      tags:
+        - Posts
+      summary: Delete post
+      security:
+        - Bearer: []
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '204':
+          description: Post deleted
+        '401':
+          description: Unauthorized
+        '403':
+          description: Not allowed to delete this post
+
+  /posts/{post_id}/like:
+    post:
+      tags:
+        - Posts
+      summary: Like post
+      security:
+        - Bearer: []
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Post liked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  likes_count:
+                    type: integer
+
+    delete:
+      tags:
+        - Posts
+      summary: Unlike post
+      security:
+        - Bearer: []
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Post unliked
+
+  /posts/{post_id}/comments:
+    get:
+      tags:
+        - Comments
+      summary: Get post comments
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Comments list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+                  pagination:
+                    type: object
+
+    post:
+      tags:
+        - Comments
+      summary: Add comment to post
+      security:
+        - Bearer: []
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  example: "Great post!"
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+
+  /wallets/me:
+    get:
+      tags:
+        - Wallets
+      summary: Get current user wallet
+      security:
+        - Bearer: []
+      responses:
+        '200':
+          description: Wallet details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+        '401':
+          description: Unauthorized
+
+  /communities:
+    get:
+      tags:
+        - Communities
+      summary: Get all communities
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Communities list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Community'
+                  pagination:
+                    type: object
+
+    post:
+      tags:
+        - Communities
+      summary: Create community
+      security:
+        - Bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                category:
+                  type: string
+                is_private:
+                  type: boolean
+                image_url:
+                  type: string
+                  format: uri
+      responses:
+        '201':
+          description: Community created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Community'
+
+  /notifications:
+    get:
+      tags:
+        - Notifications
+      summary: Get user notifications
+      security:
+        - Bearer: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: read
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Notifications list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  pagination:
+                    type: object
+
+  /notifications/{notification_id}:
+    patch:
+      tags:
+        - Notifications
+      summary: Mark notification as read
+      security:
+        - Bearer: []
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                read:
+                  type: boolean
+      responses:
+        '200':
+          description: Notification updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+
+security:
+  - Bearer: []
+
+tags:
+  - name: Authentication
+    description: Authentication and session management
+  - name: Users
+    description: User profile and account operations
+  - name: Posts
+    description: Post creation and management
+  - name: Comments
+    description: Comment operations
+  - name: Wallets
+    description: Wallet and balance management
+  - name: Communities
+    description: Community management
+  - name: Notifications
+    description: User notifications
