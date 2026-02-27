@@ -19,4 +19,15 @@ class Post(models.Model):
 	def __str__(self):
 		return f"{self.author_id.username}: {self.content[:30]}"
 
-# Create your models here.
+# Comment model for post comments
+class Comment(models.Model):
+	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+	post = models.ForeignKey(Post, related_name='comments', on_delete=models.CASCADE)
+	author = models.ForeignKey('users.User', to_field='user_id', on_delete=models.CASCADE)
+	content = models.TextField()
+	likes_count = models.IntegerField(default=0)
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	def __str__(self):
+		return f"{self.author.username}: {self.content[:30]}"

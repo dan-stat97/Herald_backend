@@ -1,15 +1,19 @@
+# Post interaction endpoints (handled in urlpatterns below if needed)
+from posts.interactions import PostLikeView, PostShareView, PostBookmarkView
 # core/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     ProfileViewSet, LikeViewSet, RepostViewSet,
     HashtagViewSet, TransactionViewSet, NewsViewSet,
-    CommunityViewSet, CauseViewSet, NotificationViewSet
+    CommunityViewSet, CauseViewSet
 )
+from notifications.views import NotificationViewSet
 from posts.views import PostViewSet
 from wallets.views import WalletViewSet
-from .comments_views import CommentViewSet
-from .social_views import FollowViewSet, BookmarkViewSet
+from posts.comments import CommentViewSet
+from users.follows import FollowViewSet
+from .social_views import BookmarkViewSet
 from .leaderboard_views import LeaderboardViewSet
 from .auth_views import signup, signout, current_user
 
@@ -25,7 +29,7 @@ router_v1.register(r'transactions', TransactionViewSet)
 router_v1.register(r'news', NewsViewSet)
 router_v1.register(r'communities', CommunityViewSet)
 router_v1.register(r'causes', CauseViewSet)
-router_v1.register(r'notifications', NotificationViewSet)
+router_v1.register(r'notifications', NotificationViewSet, basename='notification')
 router_v1.register(r'comments', CommentViewSet, basename='comment')
 router_v1.register(r'bookmarks', BookmarkViewSet, basename='bookmark')
 
@@ -44,7 +48,7 @@ urlpatterns = [
     
     # Follow endpoints
     path('v1/users/<uuid:pk>/follow/', FollowViewSet.as_view({'post': 'follow'}), name='user-follow'),
-    path('v1/users/<uuid:pk>/unfollow/', FollowViewSet.as_view({'post': 'unfollow'}), name='user-unfollow'),
+    path('v1/users/<uuid:pk>/unfollow/', FollowViewSet.as_view({'delete': 'unfollow'}), name='user-unfollow'),
     path('v1/users/<uuid:pk>/followers/', FollowViewSet.as_view({'get': 'followers'}), name='user-followers'),
     path('v1/users/<uuid:pk>/following/', FollowViewSet.as_view({'get': 'following'}), name='user-following'),
     path('v1/follow/check/', FollowViewSet.as_view({'get': 'check'}), name='follow-check'),
