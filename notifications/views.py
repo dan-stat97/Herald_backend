@@ -25,6 +25,13 @@ class NotificationViewSet(viewsets.ModelViewSet):
 		notification.save()
 		return Response(self.get_serializer(notification).data)
 
+	@action(detail=True, methods=['post'], url_path='mark_as_read')
+	def mark_as_read(self, request, pk=None):
+		notification = self.get_object()
+		notification.read = True
+		notification.save()
+		return Response(self.get_serializer(notification).data)
+
 	@action(detail=False, methods=['post'])
 	def mark_all_read(self, request):
 		user = UserProfile.objects.get(user_id=request.user)

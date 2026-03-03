@@ -177,6 +177,16 @@ class UserPostsView(views.APIView):
 		from posts.serializers import PostSerializer
 		return Response(PostSerializer(posts, many=True).data)
 
+class UserTasksView(views.APIView):
+	permission_classes = [permissions.IsAuthenticated]
+	def get(self, request, pk):
+		return Response([])
+
+class ClaimTaskRewardView(views.APIView):
+	permission_classes = [permissions.IsAuthenticated]
+	def post(self, request, pk, task_id):
+		return Response({'success': True, 'reward': 0})
+
 class CurrentUserView(views.APIView):
 	permission_classes = [permissions.IsAuthenticated]
 	def get(self, request):
