@@ -67,19 +67,22 @@ class SignupView(generics.CreateAPIView):
 		serializer = self.get_serializer(data=request.data)
 		serializer.is_valid(raise_exception=True)
 		data = serializer.validated_data
+		full_name = f"{data['first_name']} {data['last_name']}".strip()
+		display_name = data.get('display_name') or data['username']
 		if User.objects.filter(username=data['username']).exists() or User.objects.filter(email=data['email']).exists():
 			return Response({'error': 'User already exists'}, status=409)
 		user = User.objects.create_user(
 			username=data['username'],
 			email=data['email'],
 			password=data['password'],
-			first_name=data['full_name']
+			first_name=data['first_name'],
+			last_name=data['last_name']
 		)
 		profile = UserProfile.objects.create(
 			user_id=user,
 			username=data['username'],
-			display_name=data['display_name'],
-			full_name=data['full_name'],
+			display_name=display_name,
+			full_name=full_name,
 			email=data['email']
 		)
 		# Optionally create wallet here
