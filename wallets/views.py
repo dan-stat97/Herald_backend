@@ -14,22 +14,37 @@ class WalletViewSet(viewsets.ReadOnlyModelViewSet):
 
 	@action(detail=False, methods=['get'], url_path='me')
 	def me(self, request):
-		try:
-			profile = UserProfile.objects.get(user_id=request.user)
-		except UserProfile.DoesNotExist:
-			return Response({'error': 'User profile not found'}, status=404)
-		except Exception as e:
-			print(f"Error getting user profile: {e}")
-			return Response({'error': 'Failed to retrieve user profile'}, status=500)
+		"""Get or create wallet for current user"""
+		import traceback
 		
 		try:
+			profile = UserProfile.objects.get(user_id=request.user)
+			print(f"[WALLET] Found profile: {profile.username} (id: {profile.id})")
+		except UserProfile.DoesNotExist:
+			print(f"[WALLET] Profile not found for user: {request.user}")
+			return Response({'error': 'User profile not found'}, status=404)
+		except Exception as e:
+			print(f"[WALLET] Error getting user profile: {e}")
+			traceback.print_exc()
+			return Response({'error': f'Failed to retrieve user profile: {str(e)}'}, status=500)
+		
+		try:
+			print(f"[WALLET] Attempting to get/create wallet for profile {profile.id}")
 			wallet, created = Wallet.objects.get_or_create(user_id=profile)
 			if created:
-				print(f"Created new wallet for user {profile.username}")
-			return Response(WalletSerializer(wallet).data)
+				print(f"[WALLET] Created new wallet {wallet.id} for user {profile.username}")
+			else:
+				print(f"[WALLET] Found existing wallet {wallet.id}")
+			
+			print(f"[WALLET] Serializing wallet...")
+			serializer = WalletSerializer(wallet)
+			data = serializer.data
+			print(f"[WALLET] Serialization successful: {data}")
+			return Response(data)
 		except Exception as e:
-			print(f"Error creating/getting wallet: {e}")
-			return Response({'error': 'Failed to retrieve wallet'}, status=500)
+			print(f"[WALLET] Error creating/getting wallet: {e}")
+			traceback.print_exc()
+			return Response({'error': f'Failed to retrieve wallet: {str(e)}'}, status=500)
 
 	@action(detail=False, methods=['get'], url_path='me/balance')
 	def balance(self, request):
