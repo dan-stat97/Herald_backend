@@ -12,6 +12,7 @@ class CommentSerializer(serializers.ModelSerializer):
 
 class PostSerializer(serializers.ModelSerializer):
     author_id = UserProfileSerializer(read_only=True)
+    
     class Meta:
         model = Post
         fields = [
@@ -19,6 +20,26 @@ class PostSerializer(serializers.ModelSerializer):
             'comments_count', 'shares_count', 'httn_earned', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'author_id', 'likes_count', 'comments_count', 'shares_count', 'httn_earned', 'created_at', 'updated_at']
+    
+    def to_representation(self, instance):
+        try:
+            return super().to_representation(instance)
+        except Exception as e:
+            # Fallback if author serialization fails
+            data = {
+                'id': str(instance.id),
+                'content': instance.content,
+                'media_url': instance.media_url,
+                'media_type': instance.media_type,
+                'likes_count': instance.likes_count,
+                'comments_count': instance.comments_count,
+                'shares_count': instance.shares_count,
+                'httn_earned': instance.httn_earned,
+                'created_at': instance.created_at.isoformat() if instance.created_at else None,
+                'updated_at': instance.updated_at.isoformat() if instance.updated_at else None,
+                'author_id': None
+            }
+            return data
 
 class PostCreateSerializer(serializers.ModelSerializer):
     class Meta:

@@ -20,4 +20,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'user_id', 'reputation', 'created_at', 'updated_at']
 
     def get_email(self, obj):
-        return obj.user_id.email
+        try:
+            return obj.user_id.email if obj.user_id else obj.email
+        except:
+            return obj.email

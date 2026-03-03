@@ -182,9 +182,17 @@ class UserPostsView(views.APIView):
 				profile = UserProfile.objects.get(pk=pk)
 			except UserProfile.DoesNotExist:
 				return Response({'error': 'User not found'}, status=404)
-		posts = Post.objects.filter(author_id__user_id=profile.user_id).order_by('-created_at')
+		
+		posts = Post.objects.filter(author_id=profile).select_related('author_id', 'author_id__user_id').order_by('-created_at')
 		from posts.serializers import PostSerializer
-		return Response(PostSerializer(posts, many=True).data)
+		
+		try:
+			serializer = PostSerializer(posts, many=True)
+			return Response(serializer.data)
+		except Exception as e:
+			# Log error and return empty array rather than 500
+			print(f"Error serializing posts: {e}")
+			return Response([])
 
 class UserTasksView(views.APIView):
 	permission_classes = [permissions.IsAuthenticated]

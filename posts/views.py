@@ -7,7 +7,7 @@ from .serializers import PostSerializer, PostCreateSerializer
 from users.models import User as UserProfile
 
 class PostViewSet(viewsets.ModelViewSet):
-	queryset = Post.objects.all().order_by('-created_at')
+	queryset = Post.objects.select_related('author_id', 'author_id__user_id').all().order_by('-created_at')
 	permission_classes = [permissions.IsAuthenticated]
 	filter_backends = [filters.OrderingFilter, filters.SearchFilter]
 	ordering_fields = ['created_at', 'likes_count', 'comments_count', 'shares_count']
@@ -19,7 +19,12 @@ class PostViewSet(viewsets.ModelViewSet):
 		return PostSerializer
 
 	def perform_create(self, serializer):
-		serializer.save(author_id=UserProfile.objects.get(user_id=self.request.user))
+		try:
+			profile = UserProfile.objects.get(user_id=self.request.user)
+			serializer.save(author_id=profile)
+		except UserProfile.DoesNotExist:
+			from rest_framework.exceptions import ValidationError
+			raise ValidationError("User profile not found. Please complete your profile first.")
 
 	@action(detail=True, methods=['post'])
 	def like(self, request, pk=None):
