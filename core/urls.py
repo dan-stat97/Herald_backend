@@ -13,6 +13,7 @@ from posts.views import PostViewSet
 from wallets.views import WalletViewSet
 from posts.comments import CommentViewSet
 from users.follows import FollowViewSet
+from users.views import UserProfileViewSet, UserByUsernameView, UserPostsView
 from .social_views import BookmarkViewSet
 from .leaderboard_views import LeaderboardViewSet
 from .auth_views import signup, signout, current_user
@@ -49,9 +50,18 @@ urlpatterns = [
     
     # Main v1 API endpoints
     path('v1/', include(router_v1.urls)),
+
+    # Document-compatible users endpoints
+    path('v1/users/', UserProfileViewSet.as_view({'get': 'list'}), name='users-list'),
+    path('v1/users/me/', UserProfileViewSet.as_view({'get': 'me', 'patch': 'me', 'delete': 'me'}), name='users-me'),
+    path('v1/users/me/stats/', UserProfileViewSet.as_view({'get': 'stats'}), name='users-me-stats'),
+    path('v1/users/me/settings/', UserProfileViewSet.as_view({'patch': 'update_settings'}), name='users-me-settings'),
+    path('v1/users/by-username/<str:username>/', UserByUsernameView.as_view(), name='users-by-username'),
+    path('v1/users/<uuid:pk>/', UserProfileViewSet.as_view({'get': 'retrieve'}), name='users-detail'),
+    path('v1/users/<uuid:pk>/posts/', UserPostsView.as_view(), name='users-posts'),
     
     # Follow endpoints
-    path('v1/users/<uuid:pk>/follow/', FollowViewSet.as_view({'post': 'follow'}), name='user-follow'),
+    path('v1/users/<uuid:pk>/follow/', FollowViewSet.as_view({'post': 'follow', 'delete': 'unfollow'}), name='user-follow'),
     path('v1/users/<uuid:pk>/unfollow/', FollowViewSet.as_view({'delete': 'unfollow'}), name='user-unfollow'),
     path('v1/users/<uuid:pk>/followers/', FollowViewSet.as_view({'get': 'followers'}), name='user-followers'),
     path('v1/users/<uuid:pk>/following/', FollowViewSet.as_view({'get': 'following'}), name='user-following'),
@@ -67,6 +77,6 @@ urlpatterns = [
     path('v1/leaderboard/activity/', LeaderboardViewSet.as_view({'get': 'activity'}), name='leaderboard-activity'),
     path('v1/leaderboard/earnings/', LeaderboardViewSet.as_view({'get': 'earnings'}), name='leaderboard-earnings'),
     path('v1/leaderboard/me/', LeaderboardViewSet.as_view({'get': 'me'}), name='leaderboard-me'),
-    path('v1/posts/<pk>/like/', PostViewSet.as_view({'post': 'like'}), name='post-like'),
+    path('v1/posts/<pk>/like/', PostViewSet.as_view({'post': 'like', 'delete': 'unlike'}), name='post-like'),
     path('v1/posts/<pk>/unlike/', PostViewSet.as_view({'post': 'unlike'}), name='post-unlike'),
 ]

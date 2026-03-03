@@ -21,6 +21,27 @@ class PostViewSet(viewsets.ModelViewSet):
 	def perform_create(self, serializer):
 		serializer.save(author_id=UserProfile.objects.get(user_id=self.request.user))
 
+	@action(detail=True, methods=['post'])
+	def like(self, request, pk=None):
+		post = self.get_object()
+		post.likes_count += 1
+		post.save(update_fields=['likes_count', 'updated_at'])
+		return Response({'success': True, 'likes_count': post.likes_count})
+
+	@action(detail=True, methods=['delete', 'post'])
+	def unlike(self, request, pk=None):
+		post = self.get_object()
+		post.likes_count = max(0, post.likes_count - 1)
+		post.save(update_fields=['likes_count', 'updated_at'])
+		return Response({'success': True, 'likes_count': post.likes_count})
+
+	@action(detail=True, methods=['post'])
+	def share(self, request, pk=None):
+		post = self.get_object()
+		post.shares_count += 1
+		post.save(update_fields=['shares_count', 'updated_at'])
+		return Response({'success': True, 'shares_count': post.shares_count})
+
 	@action(detail=False, methods=['get'])
 	def my(self, request):
 		posts = Post.objects.filter(author_id__user_id=request.user)

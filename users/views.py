@@ -7,6 +7,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout
 from .models import User as UserProfile
 from .serializers import UserSignupSerializer, UserProfileSerializer
+from posts.models import Post
 
 class UserProfileViewSet(viewsets.ModelViewSet):
 	queryset = UserProfile.objects.all()
@@ -67,7 +68,13 @@ class SignupView(generics.CreateAPIView):
 		serializer = self.get_serializer(data=request.data)
 		serializer.is_valid(raise_exception=True)
 		data = serializer.validated_data
-		full_name = f"{data['first_name']} {data['last_name']}".strip()
+		full_name = data['full_name'].strip()
+		first_name = data.get('first_name', '').strip()
+		last_name = data.get('last_name', '').strip()
+		if not first_name and full_name:
+			parts = full_name.split(' ', 1)
+			first_name = parts[0]
+			last_name = parts[1] if len(parts) > 1 else ''
 		display_name = data.get('display_name') or data['username']
 		if User.objects.filter(username=data['username']).exists() or User.objects.filter(email=data['email']).exists():
 			return Response({'error': 'User already exists'}, status=409)
@@ -75,8 +82,8 @@ class SignupView(generics.CreateAPIView):
 			username=data['username'],
 			email=data['email'],
 			password=data['password'],
-			first_name=data['first_name'],
-			last_name=data['last_name']
+			first_name=first_name,
+			last_name=last_name
 		)
 		profile = UserProfile.objects.create(
 			user_id=user,
@@ -127,6 +134,48 @@ class SignoutView(views.APIView):
 
 class RefreshView(TokenRefreshView):
 	permission_classes = [permissions.AllowAny]
+
+class SessionView(views.APIView):
+	permission_classes = [permissions.IsAuthenticated]
+	def get(self, request):
+		profile = UserProfile.objects.get(user_id=request.user)
+		return Response({
+			'authenticated': True,
+			'user': UserProfileSerializer(profile).data
+		})
+
+class ChangePasswordView(views.APIView):
+	permission_classes = [permissions.IsAuthenticated]
+	def post(self, request):
+		current_password = request.data.get('current_password')
+		new_password = request.data.get('new_password')
+		if not current_password or not new_password:
+			return Response({'error': 'current_password and new_password are required'}, status=400)
+		if not request.user.check_password(current_password):
+			return Response({'error': 'Current password is incorrect'}, status=400)
+		request.user.set_password(new_password)
+		request.user.save()
+		return Response({'success': True})
+
+class UserByUsernameView(views.APIView):
+	permission_classes = [permissions.AllowAny]
+	def get(self, request, username):
+		try:
+			profile = UserProfile.objects.get(username=username)
+		except UserProfile.DoesNotExist:
+			return Response({'error': 'User not found'}, status=404)
+		return Response(UserProfileSerializer(profile).data)
+
+class UserPostsView(views.APIView):
+	permission_classes = [permissions.AllowAny]
+	def get(self, request, pk):
+		try:
+			profile = UserProfile.objects.get(pk=pk)
+		except UserProfile.DoesNotExist:
+			return Response({'error': 'User not found'}, status=404)
+		posts = Post.objects.filter(author_id__user_id=profile.user_id).order_by('-created_at')
+		from posts.serializers import PostSerializer
+		return Response(PostSerializer(posts, many=True).data)
 
 class CurrentUserView(views.APIView):
 	permission_classes = [permissions.IsAuthenticated]

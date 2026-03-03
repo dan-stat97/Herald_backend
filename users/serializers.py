@@ -6,8 +6,9 @@ class UserSignupSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
     username = serializers.CharField(max_length=100)
-    first_name = serializers.CharField(max_length=100)
-    last_name = serializers.CharField(max_length=100)
+    full_name = serializers.CharField(max_length=200)
+    first_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    last_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
     display_name = serializers.CharField(max_length=200, required=False, allow_blank=True)
 
 class UserProfileSerializer(serializers.ModelSerializer):
