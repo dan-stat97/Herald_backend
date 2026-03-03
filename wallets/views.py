@@ -18,9 +18,18 @@ class WalletViewSet(viewsets.ReadOnlyModelViewSet):
 			profile = UserProfile.objects.get(user_id=request.user)
 		except UserProfile.DoesNotExist:
 			return Response({'error': 'User profile not found'}, status=404)
+		except Exception as e:
+			print(f"Error getting user profile: {e}")
+			return Response({'error': 'Failed to retrieve user profile'}, status=500)
 		
-		wallet, created = Wallet.objects.get_or_create(user_id=profile)
-		return Response(WalletSerializer(wallet).data)
+		try:
+			wallet, created = Wallet.objects.get_or_create(user_id=profile)
+			if created:
+				print(f"Created new wallet for user {profile.username}")
+			return Response(WalletSerializer(wallet).data)
+		except Exception as e:
+			print(f"Error creating/getting wallet: {e}")
+			return Response({'error': 'Failed to retrieve wallet'}, status=500)
 
 	@action(detail=False, methods=['get'], url_path='me/balance')
 	def balance(self, request):

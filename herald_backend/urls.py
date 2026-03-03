@@ -5,6 +5,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
+from django.db import connection
 
 
 def root(request):
@@ -18,7 +19,18 @@ def root(request):
 
 
 def health(request):
-    return JsonResponse({'status': 'healthy'})
+    """Health check with database connectivity test"""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+    
+    return JsonResponse({
+        'status': 'healthy' if db_status == 'connected' else 'unhealthy',
+        'database': db_status
+    })
 
 
 urlpatterns = [
