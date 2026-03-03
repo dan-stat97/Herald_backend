@@ -69,12 +69,9 @@ class SignupView(generics.CreateAPIView):
 		serializer.is_valid(raise_exception=True)
 		data = serializer.validated_data
 		full_name = data['full_name'].strip()
-		first_name = data.get('first_name', '').strip()
-		last_name = data.get('last_name', '').strip()
-		if not first_name and full_name:
-			parts = full_name.split(' ', 1)
-			first_name = parts[0]
-			last_name = parts[1] if len(parts) > 1 else ''
+		parts = full_name.split(' ', 1)
+		first_name = parts[0]
+		last_name = parts[1] if len(parts) > 1 else ''
 		display_name = data.get('display_name') or data['username']
 		if User.objects.filter(username=data['username']).exists() or User.objects.filter(email=data['email']).exists():
 			return Response({'error': 'User already exists'}, status=409)
