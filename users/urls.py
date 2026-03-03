@@ -1,7 +1,10 @@
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import SignupView, SigninView, SignoutView, RefreshView, CurrentUserView, UserProfileViewSet, SessionView, ChangePasswordView
+from .views import (
+    SignupView, SigninView, SignoutView, RefreshView, CurrentUserView, 
+    UserProfileViewSet, SessionView, ChangePasswordView, UserPostsView, UserTasksView
+)
 
 
 router = DefaultRouter()
@@ -15,5 +18,10 @@ urlpatterns = [
     path('user/', CurrentUserView.as_view(), name='auth-user'),
     path('session/', SessionView.as_view(), name='auth-session'),
     path('change-password/', ChangePasswordView.as_view(), name='auth-change-password'),
+    
+    # Add direct routes for frontend compatibility
+    path('users/profiles/me/posts/', UserPostsView.as_view(), name='auth-me-posts'),
+    path('users/profiles/me/tasks/', UserTasksView.as_view(), name='auth-me-tasks'),
+    
     path('users/', include(router.urls)),
 ]

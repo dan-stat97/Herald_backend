@@ -14,14 +14,22 @@ class WalletViewSet(viewsets.ReadOnlyModelViewSet):
 
 	@action(detail=False, methods=['get'], url_path='me')
 	def me(self, request):
-		profile = UserProfile.objects.get(user_id=request.user)
-		wallet = Wallet.objects.get(user_id=profile)
+		try:
+			profile = UserProfile.objects.get(user_id=request.user)
+		except UserProfile.DoesNotExist:
+			return Response({'error': 'User profile not found'}, status=404)
+		
+		wallet, created = Wallet.objects.get_or_create(user_id=profile)
 		return Response(WalletSerializer(wallet).data)
 
 	@action(detail=False, methods=['get'], url_path='me/balance')
 	def balance(self, request):
-		profile = UserProfile.objects.get(user_id=request.user)
-		wallet = Wallet.objects.get(user_id=profile)
+		try:
+			profile = UserProfile.objects.get(user_id=request.user)
+		except UserProfile.DoesNotExist:
+			return Response({'error': 'User profile not found'}, status=404)
+		
+		wallet, created = Wallet.objects.get_or_create(user_id=profile)
 		return Response({
 			'httn_points': wallet.httn_points,
 			'httn_tokens': str(wallet.httn_tokens),
@@ -35,8 +43,12 @@ class WalletViewSet(viewsets.ReadOnlyModelViewSet):
 
 	@action(detail=False, methods=['post'], url_path='me/convert')
 	def convert(self, request):
-		profile = UserProfile.objects.get(user_id=request.user)
-		wallet = Wallet.objects.get(user_id=profile)
+		try:
+			profile = UserProfile.objects.get(user_id=request.user)
+		except UserProfile.DoesNotExist:
+			return Response({'error': 'User profile not found'}, status=404)
+		
+		wallet, created = Wallet.objects.get_or_create(user_id=profile)
 		from_currency = request.data.get('from_currency')
 		to_currency = request.data.get('to_currency')
 		amount = int(request.data.get('amount', 0))

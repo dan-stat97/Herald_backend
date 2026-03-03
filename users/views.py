@@ -89,7 +89,9 @@ class SignupView(generics.CreateAPIView):
 			full_name=full_name,
 			email=data['email']
 		)
-		# Optionally create wallet here
+		# Create wallet for new user
+		from wallets.models import Wallet
+		Wallet.objects.create(user_id=profile)
 		refresh = RefreshToken.for_user(user)
 		return Response({
 			'user': UserProfileSerializer(profile).data,
@@ -165,18 +167,28 @@ class UserByUsernameView(views.APIView):
 
 class UserPostsView(views.APIView):
 	permission_classes = [permissions.AllowAny]
-	def get(self, request, pk):
-		try:
-			profile = UserProfile.objects.get(pk=pk)
-		except UserProfile.DoesNotExist:
-			return Response({'error': 'User not found'}, status=404)
+	def get(self, request, pk=None):
+		if pk is None:
+			# /users/me/posts/ - get current user's posts
+			if not request.user.is_authenticated:
+				return Response({'error': 'Authentication required'}, status=401)
+			try:
+				profile = UserProfile.objects.get(user_id=request.user)
+			except UserProfile.DoesNotExist:
+				return Response({'error': 'User profile not found'}, status=404)
+		else:
+			# /users/{pk}/posts/ - get specific user's posts
+			try:
+				profile = UserProfile.objects.get(pk=pk)
+			except UserProfile.DoesNotExist:
+				return Response({'error': 'User not found'}, status=404)
 		posts = Post.objects.filter(author_id__user_id=profile.user_id).order_by('-created_at')
 		from posts.serializers import PostSerializer
 		return Response(PostSerializer(posts, many=True).data)
 
 class UserTasksView(views.APIView):
 	permission_classes = [permissions.IsAuthenticated]
-	def get(self, request, pk):
+	def get(self, request, pk=None):
 		return Response([])
 
 class ClaimTaskRewardView(views.APIView):
