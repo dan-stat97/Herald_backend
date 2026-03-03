@@ -16,6 +16,7 @@ from users.follows import FollowViewSet
 from .social_views import BookmarkViewSet
 from .leaderboard_views import LeaderboardViewSet
 from .auth_views import signup, signout, current_user
+from .api_root import api_root
 
 # Create v1 router
 router_v1 = DefaultRouter()
@@ -40,6 +41,9 @@ follow_list = FollowViewSet.as_view({
 })
 
 urlpatterns = [
+    # API Root - Documentation
+    path('v1/', api_root, name='api-root'),
+    
     # Auth endpoints (from users app)
     path('v1/auth/', include('users.urls')),
     
