@@ -73,13 +73,13 @@ class SignupView(generics.CreateAPIView):
 			username=data['username'],
 			email=data['email'],
 			password=data['password'],
-			first_name=data.get('full_name', '')
+			first_name=data['full_name']
 		)
 		profile = UserProfile.objects.create(
 			user_id=user,
 			username=data['username'],
 			display_name=data['display_name'],
-			full_name=data.get('full_name', ''),
+			full_name=data['full_name'],
 			email=data['email']
 		)
 		# Optionally create wallet here
