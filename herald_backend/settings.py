@@ -71,17 +71,26 @@ TEMPLATES = [
 WSGI_APPLICATION = 'herald_backend.wsgi.application'
 
 # ✅ DATABASE CONFIGURATION - USE THE WORKING CONNECTION
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'postgres',
-        'USER': 'postgres.xxhnzlunpwmnxuhbwclg',  # Their project ref
-        'PASSWORD': '7WaVbGfTTV7ZPwLM',           # New password from .env
-        'HOST': 'aws-1-eu-north-1.pooler.supabase.com',
-        'PORT': '6543',
-        'OPTIONS': {'sslmode': 'require'},
+# Use SQLite for local development, PostgreSQL for production
+import os
+
+if os.environ.get('DATABASE_URL'):
+    # Production: Use PostgreSQL from environment
+    import dj_database_url
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=os.environ.get('DATABASE_URL'),
+            conn_max_age=600
+        )
     }
-}
+else:
+    # Local development: Use SQLite
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {

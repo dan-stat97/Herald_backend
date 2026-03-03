@@ -1,5 +1,13 @@
-from rest_framework import viewsets, mixins
+from rest_framework import viewsets, mixins, status, permissions, generics, views
 from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from django.contrib.auth.models import User
+from django.contrib.auth import authenticate, login, logout
+from .models import User as UserProfile
+from .serializers import UserSignupSerializer, UserProfileSerializer
+
 class UserProfileViewSet(viewsets.ModelViewSet):
 	queryset = UserProfile.objects.all()
 	serializer_class = UserProfileSerializer
@@ -50,15 +58,6 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 				setattr(profile, field, request.data[field])
 		profile.save()
 		return Response({'success': True, 'settings': {f: getattr(profile, f, None) for f in allowed_fields}})
-
-from rest_framework import status, permissions, generics, views
-from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from django.contrib.auth.models import User
-from django.contrib.auth import authenticate, login, logout
-from .models import User as UserProfile
-from .serializers import UserSignupSerializer, UserProfileSerializer
 
 class SignupView(generics.CreateAPIView):
 	serializer_class = UserSignupSerializer
