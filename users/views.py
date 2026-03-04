@@ -89,9 +89,9 @@ class SignupView(generics.CreateAPIView):
 			full_name=full_name,
 			email=data['email']
 		)
-		# Create wallet for new user
+		# Create wallet for new user with 100 HTTN Points welcome bonus
 		from wallets.models import Wallet
-		Wallet.objects.create(user_id=profile)
+		Wallet.objects.create(user_id=profile, httn_points=100)
 		refresh = RefreshToken.for_user(user)
 		return Response({
 			'user': UserProfileSerializer(profile).data,
