@@ -40,6 +40,13 @@ class PostViewSet(viewsets.ModelViewSet):
 		try:
 			profile = UserProfile.objects.get(user_id=self.request.user)
 			serializer.save(author_id=profile)
+			
+			# Award 25 HTTN Points for creating a post
+			from wallets.models import Wallet
+			wallet = Wallet.objects.get(user_id=profile)
+			wallet.httn_points += 25
+			wallet.save(update_fields=['httn_points', 'updated_at'])
+			
 		except UserProfile.DoesNotExist:
 			from rest_framework.exceptions import ValidationError
 			raise ValidationError("User profile not found. Please complete your profile first.")
