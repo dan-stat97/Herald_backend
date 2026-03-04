@@ -164,6 +164,10 @@ CORS_EXPOSE_HEADERS = [
 ]
 
 
+# Disable automatic trailing slash redirect for API
+# This allows POST requests to URLs without trailing slashes
+APPEND_SLASH = False
+
 # REST Framework settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
