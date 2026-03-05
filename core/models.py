@@ -417,3 +417,58 @@ class Bookmark(models.Model):
 
     def __str__(self):
         return f"{self.user.username} bookmarked post {self.post.id}"
+
+
+class NewsArticle(models.Model):
+    """News articles with extended fields"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=300)
+    content = models.TextField()
+    category = models.CharField(max_length=50)
+    source_url = models.URLField(null=True, blank=True)
+    image_url = models.URLField(null=True, blank=True)
+    likes_count = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'news_articles'
+        ordering = ['-created_at']
+        verbose_name = 'News Article'
+        verbose_name_plural = 'News Articles'
+
+    def __str__(self):
+        return self.title
+
+
+class NewsLike(models.Model):
+    """Likes on news articles"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    article = models.ForeignKey(NewsArticle, on_delete=models.CASCADE, related_name='likes')
+    user = models.ForeignKey(Profiles, on_delete=models.CASCADE, db_column='user_id')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'news_likes'
+        unique_together = (('article', 'user'),)
+        verbose_name = 'News Like'
+        verbose_name_plural = 'News Likes'
+
+    def __str__(self):
+        return f"{self.user.username} liked {self.article.title}"
+
+
+class NewsBookmark(models.Model):
+    """Bookmarked news articles"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    article = models.ForeignKey(NewsArticle, on_delete=models.CASCADE, related_name='bookmarks')
+    user = models.ForeignKey(Profiles, on_delete=models.CASCADE, db_column='user_id')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'news_bookmarks'
+        unique_together = (('article', 'user'),)
+        verbose_name = 'News Bookmark'
+        verbose_name_plural = 'News Bookmarks'
+
+    def __str__(self):
+        return f"{self.user.username} bookmarked {self.article.title}"

@@ -12,6 +12,7 @@ from notifications.views import NotificationViewSet
 from posts.views import PostViewSet
 from wallets.views import WalletViewSet
 from wallets.transfer import WalletTransferView
+from wallets.advanced import WalletTransactionsView, WalletConvertView, WalletWithdrawView
 from posts.comments import CommentViewSet
 from users.follows import FollowViewSet
 from users.views import UserProfileViewSet, UserByUsernameView, UserPostsView, UserTasksView, ClaimTaskRewardView
@@ -20,12 +21,15 @@ from .social_views import BookmarkViewSet
 from .leaderboard_views import LeaderboardViewSet
 from .auth_views import signup, signout, current_user
 from .api_root import api_root
+from .news_interactions import NewsLikeView, NewsBookmarkView
 from communities.joins import CommunityJoinView
 from causes.views import CauseViewSet as CausesViewSet
 from tasks.views import TaskViewSet
 from livestreams.views import LiveStreamViewSet
 from estore.views import ProductViewSet, OrderViewSet
+from estore.cart import CartView, CartItemView
 from adminpanel.views import AdminStatsView, AdminUsersView, AdminPostsView, AdminBanUserView
+from adminpanel.reports import AdminReportView, AdminReportDetailView
 
 # Create v1 router
 router_v1 = DefaultRouter()
@@ -109,4 +113,20 @@ urlpatterns = [
     path('v1/admin/users/', AdminUsersView.as_view(), name='admin-users'),
     path('v1/admin/posts/', AdminPostsView.as_view(), name='admin-posts'),
     path('v1/admin/users/<uuid:user_id>/ban/', AdminBanUserView.as_view(), name='admin-ban-user'),
+    path('v1/admin/reports/', AdminReportView.as_view(), name='admin-reports'),
+    path('v1/admin/reports/<uuid:report_id>/', AdminReportDetailView.as_view(), name='admin-report-detail'),
+    
+    # Cart endpoints
+    path('v1/cart/', CartView.as_view(), name='cart'),
+    path('v1/cart/items/', CartItemView.as_view(), name='cart-items'),
+    path('v1/cart/items/<uuid:product_id>/', CartItemView.as_view(), name='cart-item-delete'),
+    
+    # Wallet advanced endpoints
+    path('v1/wallets/me/transactions/', WalletTransactionsView.as_view(), name='wallet-transactions'),
+    path('v1/wallets/me/convert/', WalletConvertView.as_view(), name='wallet-convert'),
+    path('v1/wallets/me/withdraw/', WalletWithdrawView.as_view(), name='wallet-withdraw'),
+    
+    # News interaction endpoints
+    path('v1/news/<uuid:article_id>/like/', NewsLikeView.as_view(), name='news-like'),
+    path('v1/news/<uuid:article_id>/bookmark/', NewsBookmarkView.as_view(), name='news-bookmark'),
 ]
