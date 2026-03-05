@@ -129,11 +129,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # In settings.py, replace hardcoded origins with:
 CORS_ALLOWED_ORIGINS = os.environ.get(
     'CORS_ALLOWED_ORIGINS',
-    'http://localhost:3000,http://localhost:5173,http://localhost:8080'
+    'http://localhost:3000,http://localhost:5173,http://localhost:8080,https://heraldsocial.vercel.app'
 ).split(',')
 
-CORS_ALLOW_CREDENTIALS = True
-# Allow credentials (cookies, authorization headers)
 CORS_ALLOW_CREDENTIALS = True
 
 # Allowed HTTP methods
