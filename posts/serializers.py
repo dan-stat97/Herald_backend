@@ -12,14 +12,36 @@ class CommentSerializer(serializers.ModelSerializer):
 
 class PostSerializer(serializers.ModelSerializer):
     author_id = UserProfileSerializer(read_only=True)
+    username = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Post
         fields = [
-            'id', 'author_id', 'content', 'media_url', 'media_type', 'likes_count',
+            'id', 'author_id', 'username', 'display_name', 'avatar_url',
+            'content', 'media_url', 'media_type', 'likes_count',
             'comments_count', 'shares_count', 'httn_earned', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'author_id', 'likes_count', 'comments_count', 'shares_count', 'httn_earned', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'author_id', 'username', 'display_name', 'avatar_url', 'likes_count', 'comments_count', 'shares_count', 'httn_earned', 'created_at', 'updated_at']
+    
+    def get_username(self, obj):
+        try:
+            return obj.author_id.username if obj.author_id else 'unknown'
+        except:
+            return 'unknown'
+    
+    def get_display_name(self, obj):
+        try:
+            return obj.author_id.display_name if obj.author_id else 'Unknown User'
+        except:
+            return 'Unknown User'
+    
+    def get_avatar_url(self, obj):
+        try:
+            return obj.author_id.avatar_url if obj.author_id else None
+        except:
+            return None
     
     def to_representation(self, instance):
         try:
@@ -37,7 +59,10 @@ class PostSerializer(serializers.ModelSerializer):
                 'httn_earned': instance.httn_earned,
                 'created_at': instance.created_at.isoformat() if instance.created_at else None,
                 'updated_at': instance.updated_at.isoformat() if instance.updated_at else None,
-                'author_id': None
+                'author_id': None,
+                'username': 'unknown',
+                'display_name': 'Unknown User',
+                'avatar_url': None
             }
             return data
 

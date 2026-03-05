@@ -38,14 +38,40 @@ class PostViewSet(viewsets.ModelViewSet):
 
 	def perform_create(self, serializer):
 		try:
+			from django.db import transaction
 			profile = UserProfile.objects.get(user_id=self.request.user)
-			serializer.save(author_id=profile)
 			
-			# Award 25 HTTN Points for creating a post
-			from wallets.models import Wallet
-			wallet = Wallet.objects.get(user_id=profile)
-			wallet.httn_points += 25
-			wallet.save(update_fields=['httn_points', 'updated_at'])
+			# Check for duplicate posts (same content from same user in last 5 seconds)
+			from django.utils import timezone
+			from datetime import timedelta
+			recent_time = timezone.now() - timedelta(seconds=5)
+			content = serializer.validated_data.get('content', '')
+			
+			duplicate_exists = Post.objects.filter(
+				author_id=profile,
+				content=content,
+				created_at__gte=recent_time
+			).exists()
+			
+			if duplicate_exists:
+				# Return existing post instead of creating duplicate
+				existing_post = Post.objects.filter(
+					author_id=profile,
+					content=content,
+					created_at__gte=recent_time
+				).first()
+				serializer.instance = existing_post
+				return
+			
+			# Use atomic transaction to prevent race conditions
+			with transaction.atomic():
+				post = serializer.save(author_id=profile)
+				
+				# Award 25 HTTN Points for creating a post
+				from wallets.models import Wallet
+				wallet = Wallet.objects.select_for_update().get(user_id=profile)
+				wallet.httn_points += 25
+				wallet.save(update_fields=['httn_points', 'updated_at'])
 			
 		except UserProfile.DoesNotExist:
 			from rest_framework.exceptions import ValidationError
