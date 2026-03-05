@@ -20,6 +20,22 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 		username = self.request.query_params.get('username')
 		if username:
 			queryset = queryset.filter(username=username)
+
+		sort = self.request.query_params.get('sort')
+		allowed_sort_fields = {'created_at', 'updated_at', 'reputation', 'username', 'display_name'}
+		if sort:
+			sort_field = sort.lstrip('-')
+			if sort_field in allowed_sort_fields:
+				queryset = queryset.order_by(sort)
+
+		limit = self.request.query_params.get('limit')
+		if limit:
+			try:
+				limit_value = int(limit)
+				if limit_value > 0:
+					queryset = queryset[:limit_value]
+			except (TypeError, ValueError):
+				pass
 		return queryset
 
 	@action(detail=False, methods=['get', 'patch', 'delete'], url_path='me')

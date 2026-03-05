@@ -69,6 +69,7 @@ urlpatterns = [
 
     # Document-compatible users endpoints
     path('v1/users/', UserProfileViewSet.as_view({'get': 'list'}), name='users-list'),
+    path('v1/users', UserProfileViewSet.as_view({'get': 'list'}), name='users-list-no-slash'),
     path('v1/users/me/', UserProfileViewSet.as_view({'get': 'me', 'patch': 'me', 'delete': 'me'}), name='users-me'),
     path('v1/users/me/stats/', UserProfileViewSet.as_view({'get': 'stats'}), name='users-me-stats'),
     path('v1/users/me/settings/', UserProfileViewSet.as_view({'patch': 'update_settings'}), name='users-me-settings'),
