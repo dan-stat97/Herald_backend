@@ -21,6 +21,11 @@ from .leaderboard_views import LeaderboardViewSet
 from .auth_views import signup, signout, current_user
 from .api_root import api_root
 from communities.joins import CommunityJoinView
+from causes.views import CauseViewSet as CausesViewSet
+from tasks.views import TaskViewSet
+from livestreams.views import LiveStreamViewSet
+from estore.views import ProductViewSet, OrderViewSet
+from adminpanel.views import AdminStatsView, AdminUsersView, AdminPostsView, AdminBanUserView
 
 # Create v1 router
 router_v1 = DefaultRouter()
@@ -33,10 +38,14 @@ router_v1.register(r'hashtags', HashtagViewSet)
 router_v1.register(r'transactions', TransactionViewSet)
 router_v1.register(r'news', NewsViewSet)
 router_v1.register(r'communities', CommunityViewSet)
-router_v1.register(r'causes', CauseViewSet)
+router_v1.register(r'causes', CausesViewSet, basename='cause')
 router_v1.register(r'notifications', NotificationViewSet, basename='notification')
 router_v1.register(r'comments', CommentViewSet, basename='comment')
 router_v1.register(r'bookmarks', BookmarkViewSet, basename='bookmark')
+router_v1.register(r'tasks', TaskViewSet, basename='task')
+router_v1.register(r'streams', LiveStreamViewSet, basename='livestream')
+router_v1.register(r'products', ProductViewSet, basename='product')
+router_v1.register(r'orders', OrderViewSet, basename='order')
 
 # Follow endpoints (custom routes)
 follow_list = FollowViewSet.as_view({
@@ -94,4 +103,10 @@ urlpatterns = [
     
     # Communities join/leave endpoints  
     path('v1/communities/<uuid:community_id>/join/', CommunityJoinView.as_view(), name='community-join'),
+    
+    # Admin endpoints
+    path('v1/admin/stats/', AdminStatsView.as_view(), name='admin-stats'),
+    path('v1/admin/users/', AdminUsersView.as_view(), name='admin-users'),
+    path('v1/admin/posts/', AdminPostsView.as_view(), name='admin-posts'),
+    path('v1/admin/users/<uuid:user_id>/ban/', AdminBanUserView.as_view(), name='admin-ban-user'),
 ]

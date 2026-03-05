@@ -36,6 +36,8 @@ INSTALLED_APPS = [
     'leaderboard',
     'adminpanel',
     'estore',
+    'tasks',
+    'livestreams',
 ]
 
 MIDDLEWARE = [
