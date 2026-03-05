@@ -11,13 +11,16 @@ from .views import (
 from notifications.views import NotificationViewSet
 from posts.views import PostViewSet
 from wallets.views import WalletViewSet
+from wallets.transfer import WalletTransferView
 from posts.comments import CommentViewSet
 from users.follows import FollowViewSet
 from users.views import UserProfileViewSet, UserByUsernameView, UserPostsView, UserTasksView, ClaimTaskRewardView
+from users.avatar import AvatarUploadView
 from .social_views import BookmarkViewSet
 from .leaderboard_views import LeaderboardViewSet
 from .auth_views import signup, signout, current_user
 from .api_root import api_root
+from communities.joins import CommunityJoinView
 
 # Create v1 router
 router_v1 = DefaultRouter()
@@ -84,4 +87,11 @@ urlpatterns = [
     path('v1/notifications/mark-all-read/', NotificationViewSet.as_view({'post': 'mark_all_read'}), name='notifications-mark-all-read'),
     path('v1/posts/<pk>/like/', PostViewSet.as_view({'post': 'like', 'delete': 'unlike'}), name='post-like'),
     path('v1/posts/<pk>/unlike/', PostViewSet.as_view({'post': 'unlike'}), name='post-unlike'),
+    
+    # New wallet and user endpoints
+    path('v1/wallets/transfer/', WalletTransferView.as_view(), name='wallet-transfer'),
+    path('v1/users/me/avatar/', AvatarUploadView.as_view(), name='user-avatar'),
+    
+    # Communities join/leave endpoints  
+    path('v1/communities/<uuid:community_id>/join/', CommunityJoinView.as_view(), name='community-join'),
 ]

@@ -18,4 +18,17 @@ class Community(models.Model):
 	def __str__(self):
 		return self.name
 
-# Create your models here.
+
+class CommunityMember(models.Model):
+	"""Model to track community members"""
+	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+	community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name='members')
+	user = models.ForeignKey(User, on_delete=models.CASCADE)
+	joined_at = models.DateTimeField(auto_now_add=True)
+	
+	class Meta:
+		unique_together = ('community', 'user')
+		db_table = 'community_members'
+	
+	def __str__(self):
+		return f"{self.user.username} in {self.community.name}"
