@@ -31,3 +31,22 @@ class Comment(models.Model):
 
 	def __str__(self):
 		return f"{self.author.username}: {self.content[:30]}"
+
+
+class ScheduledPost(models.Model):
+	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+	user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='scheduled_posts')
+	content = models.TextField(blank=True)
+	media_url = models.URLField(null=True, blank=True)
+	media_type = models.CharField(max_length=20, choices=[('image', 'Image'), ('video', 'Video'), ('reel', 'Reel')], null=True, blank=True)
+	run_at = models.DateTimeField()
+	status = models.CharField(max_length=20, choices=[('scheduled', 'Scheduled'), ('published', 'Published'), ('cancelled', 'Cancelled')], default='scheduled')
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		db_table = 'scheduled_posts'
+		ordering = ['run_at']
+
+	def __str__(self):
+		return f"Scheduled by {self.user.username} at {self.run_at.isoformat()}"
