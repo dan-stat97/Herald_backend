@@ -5,6 +5,7 @@ from users.models import User as UserProfile
 from posts.models import Post
 from wallets.models import Wallet
 from django.db.models import Count, Sum
+from django.db.models import Q
 
 
 class AdminStatsView(views.APIView):
@@ -51,6 +52,9 @@ class AdminUsersView(views.APIView):
         limit = min(int(request.query_params.get('limit', 50)), 100)
         
         users = UserProfile.objects.all().order_by('-created_at')
+        search = request.query_params.get('search')
+        if search:
+            users = users.filter(Q(username__icontains=search) | Q(display_name__icontains=search) | Q(email__icontains=search))
         
         start = (page - 1) * limit
         end = start + limit
@@ -62,7 +66,8 @@ class AdminUsersView(views.APIView):
             'pagination': {
                 'page': page,
                 'limit': limit,
-                'total': users.count()
+                'total': users.count(),
+                'total_pages': (users.count() + limit - 1) // limit if limit else 1
             }
         })
 
@@ -78,6 +83,9 @@ class AdminPostsView(views.APIView):
         limit = min(int(request.query_params.get('limit', 50)), 100)
         
         posts = Post.objects.all().order_by('-created_at')
+        search = request.query_params.get('search')
+        if search:
+            posts = posts.filter(content__icontains=search)
         
         start = (page - 1) * limit
         end = start + limit
@@ -89,7 +97,8 @@ class AdminPostsView(views.APIView):
             'pagination': {
                 'page': page,
                 'limit': limit,
-                'total': posts.count()
+                'total': posts.count(),
+                'total_pages': (posts.count() + limit - 1) // limit if limit else 1
             }
         })
 

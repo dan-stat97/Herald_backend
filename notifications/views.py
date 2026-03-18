@@ -37,3 +37,9 @@ class NotificationViewSet(viewsets.ModelViewSet):
 		user = UserProfile.objects.get(user_id=request.user)
 		Notification.objects.filter(user_id=user, read=False).update(read=True)
 		return Response({'success': True})
+
+	@action(detail=False, methods=['delete'], url_path='clear-all')
+	def clear_all(self, request):
+		user = UserProfile.objects.get(user_id=request.user)
+		deleted_count, _ = Notification.objects.filter(user_id=user).delete()
+		return Response({'success': True, 'deleted': deleted_count})

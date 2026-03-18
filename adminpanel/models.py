@@ -18,4 +18,19 @@ class Ban(models.Model):
 	banned_until = models.DateField(null=True, blank=True)
 	created_at = models.DateTimeField(auto_now_add=True)
 
+
+class AdCampaign(models.Model):
+	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+	user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ad_campaigns')
+	title = models.CharField(max_length=200)
+	description = models.TextField(null=True, blank=True)
+	budget_points = models.IntegerField(default=0)
+	spent_points = models.IntegerField(default=0)
+	impressions = models.IntegerField(default=0)
+	clicks = models.IntegerField(default=0)
+	status = models.CharField(max_length=20, choices=[('active', 'Active'), ('paused', 'Paused'), ('completed', 'Completed')], default='active')
+	start_date = models.DateField(null=True, blank=True)
+	end_date = models.DateField(null=True, blank=True)
+	created_at = models.DateTimeField(auto_now_add=True)
+
 # Create your models here.

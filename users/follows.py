@@ -43,3 +43,19 @@ class FollowViewSet(viewsets.ViewSet):
         profiles = UserProfile.objects.filter(id__in=following_ids)
         data = [{'id': p.id, 'username': p.username, 'display_name': p.display_name} for p in profiles]
         return Response(data)
+
+    @action(detail=False, methods=['get'])
+    def check(self, request):
+        target_id = request.query_params.get('user_id') or request.query_params.get('target_user_id')
+        if not target_id:
+            return Response({'error': 'user_id required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        follower = UserProfile.objects.get(user_id=request.user)
+        is_following = Follow.objects.filter(follower_id=follower.id, following_id=target_id).exists()
+        return Response({'is_following': is_following})
+
+    @action(detail=True, methods=['get'])
+    def status(self, request, pk=None):
+        follower = UserProfile.objects.get(user_id=request.user)
+        is_following = Follow.objects.filter(follower_id=follower.id, following_id=pk).exists()
+        return Response({'is_following': is_following})

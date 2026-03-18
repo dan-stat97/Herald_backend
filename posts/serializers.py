@@ -15,15 +15,17 @@ class PostSerializer(serializers.ModelSerializer):
     username = serializers.SerializerMethodField()
     display_name = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
+    is_verified = serializers.SerializerMethodField()
+    is_creator = serializers.SerializerMethodField()
     
     class Meta:
         model = Post
         fields = [
-            'id', 'author_id', 'username', 'display_name', 'avatar_url',
+            'id', 'author_id', 'username', 'display_name', 'avatar_url', 'is_verified', 'is_creator',
             'content', 'media_url', 'media_type', 'likes_count',
             'comments_count', 'shares_count', 'httn_earned', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'author_id', 'username', 'display_name', 'avatar_url', 'likes_count', 'comments_count', 'shares_count', 'httn_earned', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'author_id', 'username', 'display_name', 'avatar_url', 'is_verified', 'is_creator', 'likes_count', 'comments_count', 'shares_count', 'httn_earned', 'created_at', 'updated_at']
     
     def get_username(self, obj):
         try:
@@ -42,6 +44,18 @@ class PostSerializer(serializers.ModelSerializer):
             return obj.author_id.avatar_url if obj.author_id else None
         except:
             return None
+
+    def get_is_verified(self, obj):
+        try:
+            return bool(obj.author_id.is_verified) if obj.author_id else False
+        except:
+            return False
+
+    def get_is_creator(self, obj):
+        try:
+            return bool(obj.author_id.is_creator) if obj.author_id else False
+        except:
+            return False
     
     def to_representation(self, instance):
         try:
@@ -62,7 +76,9 @@ class PostSerializer(serializers.ModelSerializer):
                 'author_id': None,
                 'username': 'unknown',
                 'display_name': 'Unknown User',
-                'avatar_url': None
+                'avatar_url': None,
+                'is_verified': False,
+                'is_creator': False
             }
             return data
 
