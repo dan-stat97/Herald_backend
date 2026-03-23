@@ -12,8 +12,8 @@ pip install -r requirements.txt
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
 
-echo "Running database migrations..."
-python manage.py migrate --noinput --fake-initial --verbosity 2
+echo "Running database migrations (safe mode)..."
+python manage.py migrate_safe
 
 echo "Verifying database setup..."
 python manage.py check --database default
