@@ -164,7 +164,12 @@ class NewsViewSet(viewsets.ReadOnlyModelViewSet):
 class CommunityViewSet(viewsets.ModelViewSet):
     queryset = Communities.objects.all()
     serializer_class = CommunitySerializer
-    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        # Anyone can list/retrieve communities; write ops require auth
+        if self.action in ('list', 'retrieve'):
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
 
 @method_decorator(csrf_exempt, name='dispatch')
