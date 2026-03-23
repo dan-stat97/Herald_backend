@@ -61,7 +61,11 @@ from estore.cart import CartView, CartItemView
 from estore.store_views import StoreProductsView, StoreCheckoutView, StoreOrdersMeView
 from adminpanel.views import AdminStatsView, AdminUsersView, AdminPostsView, AdminBanUserView
 from adminpanel.reports import AdminReportView, AdminReportDetailView
-from adminpanel.extra_views import AdminRoleView, AdminVerifyUserView, AdCampaignListCreateView, AdCampaignDetailView
+from adminpanel.extra_views import (
+    AdminRoleView, AdminVerifyUserView,
+    AdCampaignListCreateView, AdCampaignDetailView,
+    PublicActiveAdsView, AdminAdCampaignListView, AdminAdCampaignDetailView,
+)
 
 # Create v1 router
 router_v1 = DefaultRouter(trailing_slash='/?')
@@ -177,7 +181,13 @@ urlpatterns = [
     path('v1/admin/reports/', AdminReportView.as_view(), name='admin-reports'),
     path('v1/admin/reports/<uuid:report_id>/', AdminReportDetailView.as_view(), name='admin-report-detail'),
 
-    # Ads endpoints
+    # Ads — public feed
+    path('v1/ads/active/', PublicActiveAdsView.as_view(), name='ads-active'),
+    path('v1/ads/active/<uuid:campaign_id>/click/', PublicActiveAdsView.as_view(), name='ads-click'),
+    # Ads — admin management
+    path('v1/admin/ads/', AdminAdCampaignListView.as_view(), name='admin-ads'),
+    path('v1/admin/ads/<uuid:campaign_id>/', AdminAdCampaignDetailView.as_view(), name='admin-ads-detail'),
+    # Ads — user own campaigns
     path('v1/ads/campaigns/', AdCampaignListCreateView.as_view(), name='ads-campaigns'),
     path('v1/ads/campaigns/me/', AdCampaignListCreateView.as_view(), name='ads-campaigns-me'),
     path('v1/ads/campaigns/<uuid:campaign_id>/', AdCampaignDetailView.as_view(), name='ads-campaign-detail'),

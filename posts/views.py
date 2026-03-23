@@ -125,3 +125,89 @@ class PostViewSet(viewsets.ModelViewSet):
 			return self.get_paginated_response(serializer.data)
 		serializer = PostSerializer(posts, many=True)
 		return Response(serializer.data)
+
+	@action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+	def trending(self, request):
+		"""Posts sorted by engagement (likes + comments + shares) in the last 48 hours."""
+		from django.utils import timezone
+		from datetime import timedelta
+		from django.db.models import F, ExpressionWrapper, IntegerField
+
+		limit = min(int(request.query_params.get('limit', 20)), 100)
+		cutoff = timezone.now() - timedelta(hours=48)
+
+		posts = (
+			Post.objects
+			.select_related('author_id', 'author_id__user_id')
+			.annotate(
+				engagement=ExpressionWrapper(
+					F('likes_count') + F('comments_count') + F('shares_count'),
+					output_field=IntegerField(),
+				)
+			)
+			.filter(created_at__gte=cutoff)
+			.order_by('-engagement', '-created_at')[:limit]
+		)
+
+		# Fall back to all-time if last 48h is empty
+		if not posts.exists():
+			posts = (
+				Post.objects
+				.select_related('author_id', 'author_id__user_id')
+				.annotate(
+					engagement=ExpressionWrapper(
+						F('likes_count') + F('comments_count') + F('shares_count'),
+						output_field=IntegerField(),
+					)
+				)
+				.order_by('-engagement', '-created_at')[:limit]
+			)
+
+		serializer = PostSerializer(posts, many=True)
+		return Response({'data': serializer.data, 'pagination': {'page': 1, 'limit': limit, 'total': len(serializer.data), 'total_pages': 1}})
+
+	@action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+	def following(self, request):
+		"""Posts from users the authenticated user follows."""
+		from core.models import Follow
+
+		limit = min(int(request.query_params.get('limit', 20)), 100)
+		page = max(int(request.query_params.get('page', 1)), 1)
+
+		try:
+			profile = UserProfile.objects.get(user_id=request.user)
+			following_ids = list(
+				Follow.objects.filter(follower_id=profile.id).values_list('following_id', flat=True)
+			)
+		except UserProfile.DoesNotExist:
+			return Response({'data': [], 'pagination': {'page': 1, 'limit': limit, 'total': 0, 'total_pages': 0}})
+
+		if not following_ids:
+			# Not following anyone — return empty with a hint
+			return Response({
+				'data': [],
+				'pagination': {'page': 1, 'limit': limit, 'total': 0, 'total_pages': 0},
+				'message': 'Follow some users to see their posts here.',
+			})
+
+		posts_qs = (
+			Post.objects
+			.select_related('author_id', 'author_id__user_id')
+			.filter(author_id__id__in=following_ids)
+			.order_by('-created_at')
+		)
+
+		total = posts_qs.count()
+		offset = (page - 1) * limit
+		posts = posts_qs[offset:offset + limit]
+
+		serializer = PostSerializer(posts, many=True)
+		return Response({
+			'data': serializer.data,
+			'pagination': {
+				'page': page,
+				'limit': limit,
+				'total': total,
+				'total_pages': (total + limit - 1) // limit,
+			},
+		})

@@ -24,6 +24,14 @@ class AdCampaign(models.Model):
 	user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ad_campaigns')
 	title = models.CharField(max_length=200)
 	description = models.TextField(null=True, blank=True)
+	# Display fields for rendering the ad banner
+	image_url = models.URLField(null=True, blank=True)
+	cta_text = models.CharField(max_length=100, default='Learn More')
+	target_url = models.URLField(null=True, blank=True)
+	sponsor_name = models.CharField(max_length=200, null=True, blank=True)
+	reward_points = models.IntegerField(default=5)
+	is_featured = models.BooleanField(default=False)
+	# Budget & metrics
 	budget_points = models.IntegerField(default=0)
 	spent_points = models.IntegerField(default=0)
 	impressions = models.IntegerField(default=0)
@@ -32,5 +40,6 @@ class AdCampaign(models.Model):
 	start_date = models.DateField(null=True, blank=True)
 	end_date = models.DateField(null=True, blank=True)
 	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
 
 # Create your models here.
