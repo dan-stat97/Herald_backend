@@ -1,117 +1,103 @@
 # core/leaderboard_views.py
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Count, Sum
-from .models import Profiles, Posts, Wallets
-from .serializers import ProfileSerializer
-from .pagination import StandardPagination
+from django.db.models import Count
 from datetime import timedelta
 from django.utils import timezone
 
+# Use the real UserProfile model (users_user table in production)
+from users.models import User as UserProfile
+from users.serializers import UserProfileSerializer
+from wallets.models import Wallet
+
+
 class LeaderboardViewSet(viewsets.GenericViewSet):
-    """
-    Leaderboard functionality
-    """
-    permission_classes = [permissions.IsAuthenticated]
-    pagination_class = StandardPagination
-    
+    """Leaderboard endpoints — public read access"""
+    permission_classes = [permissions.AllowAny]
+
+    def _serialize_profile(self, profile, rank, extra=None):
+        data = UserProfileSerializer(profile).data
+        data['rank'] = rank
+        data['user_id'] = str(profile.id)
+        data['display_name'] = profile.display_name or profile.username or 'Unknown'
+        data['is_verified'] = profile.is_verified
+        data['avatar_url'] = profile.avatar_url
+        data['tier'] = profile.tier or 'participant'
+        data['reputation'] = profile.reputation or 0
+        data['total_engagement'] = 0
+        if extra:
+            data.update(extra)
+        return data
+
     @action(detail=False, methods=['get'])
     def reputation(self, request):
-        """Get top users by reputation/balance"""
-        queryset = Profiles.objects.all().order_by('-balance')[:100]
-        
-        # Add rank
-        ranked_users = []
-        for idx, user in enumerate(queryset, 1):
-            user_data = ProfileSerializer(user, context={'request': request}).data
-            user_data['rank'] = idx
-            ranked_users.append(user_data)
-        
-        return Response(ranked_users)
-    
-    @action(detail=False, methods=['get'])
-    def activity(self, request):
-        """Get top users by activity (posts + likes received)"""
-        period = request.query_params.get('period', 'all_time')
-        
-        # Date filtering
-        if period == 'week':
-            start_date = timezone.now() - timedelta(days=7)
-        elif period == 'month':
-            start_date = timezone.now() - timedelta(days=30)
-        else:
-            start_date = None
-        
-        # Annotate users with post count
-        queryset = Profiles.objects.all()
-        
-        if start_date:
-            queryset = queryset.annotate(
-                post_count=Count('posts', filter=Posts.objects.filter(created_at__gte=start_date))
-            ).order_by('-post_count')[:100]
-        else:
-            queryset = queryset.annotate(
-                post_count=Count('posts')
-            ).order_by('-post_count')[:100]
-        
-        # Add rank
-        ranked_users = []
-        for idx, user in enumerate(queryset, 1):
-            user_data = ProfileSerializer(user, context={'request': request}).data
-            user_data['rank'] = idx
-            user_data['post_count'] = user.post_count
-            ranked_users.append(user_data)
-        
-        return Response(ranked_users)
+        """Top users by reputation score"""
+        limit = min(int(request.query_params.get('limit', 50)), 100)
+        queryset = UserProfile.objects.all().order_by('-reputation')[:limit]
+        ranked = [self._serialize_profile(u, idx) for idx, u in enumerate(queryset, 1)]
+        return Response(ranked)
 
     @action(detail=False, methods=['get'])
     def engagement(self, request):
-        """Alias endpoint for engagement leaderboard"""
-        return self.activity(request)
-    
+        """Top users by post count (engagement proxy)"""
+        limit = min(int(request.query_params.get('limit', 50)), 100)
+        queryset = (
+            UserProfile.objects
+            .annotate(post_count=Count('post'))
+            .order_by('-post_count')[:limit]
+        )
+        ranked = [
+            self._serialize_profile(u, idx, {'total_engagement': getattr(u, 'post_count', 0)})
+            for idx, u in enumerate(queryset, 1)
+        ]
+        return Response(ranked)
+
     @action(detail=False, methods=['get'])
-    def earnings(self, request):
-        """Get top users by HTTN earned"""
-        queryset = Wallets.objects.all().order_by('-httn_points')[:100]
-        
-        ranked_users = []
-        for idx, wallet in enumerate(queryset, 1):
-            try:
-                profile = Profiles.objects.get(user_id=wallet.user_id)
-                user_data = ProfileSerializer(profile, context={'request': request}).data
-                user_data['rank'] = idx
-                user_data['httn_points'] = wallet.httn_points
-                user_data['httn_tokens'] = str(wallet.httn_tokens)
-                ranked_users.append(user_data)
-            except Profiles.DoesNotExist:
-                continue
-        
-        return Response(ranked_users)
+    def activity(self, request):
+        return self.engagement(request)
 
     @action(detail=False, methods=['get'])
     def points(self, request):
-        """Alias endpoint for points leaderboard"""
-        return self.earnings(request)
-    
+        """Top users by HTTN wallet points"""
+        limit = min(int(request.query_params.get('limit', 50)), 100)
+        try:
+            wallets = Wallet.objects.select_related('user').order_by('-httn_points')[:limit]
+            ranked = []
+            for idx, wallet in enumerate(wallets, 1):
+                try:
+                    profile = wallet.user
+                    data = self._serialize_profile(profile, idx, {
+                        'httn_points': wallet.httn_points,
+                    })
+                    ranked.append(data)
+                except Exception:
+                    continue
+            return Response(ranked)
+        except Exception:
+            # Fallback: return reputation leaderboard if wallet table unavailable
+            return self.reputation(request)
+
+    @action(detail=False, methods=['get'])
+    def earnings(self, request):
+        return self.points(request)
+
     @action(detail=False, methods=['get'])
     def me(self, request):
-        """Get current user's rank"""
+        """Current user's rank by reputation"""
+        if not request.user.is_authenticated:
+            return Response({'error': 'Authentication required'}, status=401)
         try:
-            profile = Profiles.objects.get(user_id=request.user.id)
-            
-            # Calculate rank by reputation
-            higher_users = Profiles.objects.filter(balance__gt=profile.balance).count()
-            rank = higher_users + 1
-            total_users = Profiles.objects.count()
-            percentile = ((total_users - rank) / total_users) * 100
-            
+            profile = UserProfile.objects.get(user_id=request.user)
+            rep = profile.reputation or 0
+            rank = UserProfile.objects.filter(reputation__gt=rep).count() + 1
+            total = UserProfile.objects.count()
+            percentile = round(((total - rank) / max(total, 1)) * 100, 1)
             return Response({
                 'rank': rank,
-                'reputation': profile.balance or 0,
-                'percentile': round(percentile, 1),
-                'total_users': total_users
+                'reputation': rep,
+                'percentile': percentile,
+                'total_users': total,
             })
-            
-        except Profiles.DoesNotExist:
+        except UserProfile.DoesNotExist:
             return Response({'error': 'Profile not found'}, status=404)

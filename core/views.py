@@ -8,16 +8,18 @@ from django.contrib.auth.models import User
 from .pagination import StandardPagination
 # core/views.py
 from .models import (
-    Profiles, Posts, Likes, Reposts, Hashtags, 
+    Profiles, Posts, Likes, Reposts, Hashtags,
     Transactions, News, Communities, Causes, Notifications,
-    AdCampaigns, PostInteractions, UserRoles, UserSettings, UserTasks, Wallets
+    AdCampaigns, PostInteractions, UserRoles, UserSettings, UserTasks, Wallets,
+    NewsArticle,
 )
 from .serializers import (
-    ProfileSerializer, PostSerializer, LikeSerializer, 
+    ProfileSerializer, PostSerializer, LikeSerializer,
     RepostSerializer, HashtagSerializer, TransactionSerializer,
     NewsSerializer, CommunitySerializer, CauseSerializer,
-    NotificationSerializer, CommentSerializer, FollowSerializer, BookmarkSerializer  # Add these
+    NotificationSerializer, CommentSerializer, FollowSerializer, BookmarkSerializer,
 )
+from rest_framework import serializers
 
 import uuid
 
@@ -153,11 +155,52 @@ class TransactionViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
 
+class NewsArticleSerializer(serializers.ModelSerializer):
+    """Serializer for NewsArticle that maps fields to frontend expectations."""
+    summary = serializers.SerializerMethodField()
+    source = serializers.SerializerMethodField()
+    source_type = serializers.SerializerMethodField()
+    external_url = serializers.URLField(source='source_url', allow_null=True, read_only=True)
+    published_at = serializers.DateTimeField(source='created_at', read_only=True)
+
+    class Meta:
+        model = NewsArticle
+        fields = [
+            'id', 'title', 'summary', 'content', 'source', 'source_type',
+            'image_url', 'external_url', 'published_at', 'likes_count', 'category',
+        ]
+
+    def get_summary(self, obj):
+        if obj.content:
+            return obj.content[:200] + ('…' if len(obj.content) > 200 else '')
+        return None
+
+    def get_source(self, obj):
+        return 'Herald Social'
+
+    def get_source_type(self, obj):
+        cat = (obj.category or '').lower()
+        if 'loveworld' in cat:
+            return 'loveworld'
+        if 'healing' in cat:
+            return 'healing_school'
+        if 'external' in cat or 'christian' in cat:
+            return 'external'
+        return 'herald'
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class NewsViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = News.objects.all().order_by('-created_at')
-    serializer_class = NewsSerializer
+    """News articles — uses NewsArticle model with extended fields."""
     permission_classes = [permissions.AllowAny]
+    serializer_class = NewsArticleSerializer
+
+    def get_queryset(self):
+        try:
+            return NewsArticle.objects.all().order_by('-created_at')
+        except Exception:
+            # Fallback to old News model if new table doesn't exist yet
+            return News.objects.none()
 
 
 @method_decorator(csrf_exempt, name='dispatch')

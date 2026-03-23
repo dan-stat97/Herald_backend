@@ -7,7 +7,11 @@ from .models import LiveStream
 
 class LiveStreamViewSet(viewsets.ModelViewSet):
     """CRUD operations for live streams"""
-    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
     
     def get_queryset(self):
         status_filter = self.request.query_params.get('status')
