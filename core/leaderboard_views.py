@@ -64,6 +64,11 @@ class LeaderboardViewSet(viewsets.GenericViewSet):
             ranked_users.append(user_data)
         
         return Response(ranked_users)
+
+    @action(detail=False, methods=['get'])
+    def engagement(self, request):
+        """Alias endpoint for engagement leaderboard"""
+        return self.activity(request)
     
     @action(detail=False, methods=['get'])
     def earnings(self, request):
@@ -83,6 +88,11 @@ class LeaderboardViewSet(viewsets.GenericViewSet):
                 continue
         
         return Response(ranked_users)
+
+    @action(detail=False, methods=['get'])
+    def points(self, request):
+        """Alias endpoint for points leaderboard"""
+        return self.earnings(request)
     
     @action(detail=False, methods=['get'])
     def me(self, request):
