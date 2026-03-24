@@ -17,6 +17,7 @@ class PostSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     is_verified = serializers.SerializerMethodField()
     is_creator = serializers.SerializerMethodField()
+    bookmarks_count = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
     is_reposted = serializers.SerializerMethodField()
     is_bookmarked = serializers.SerializerMethodField()
@@ -26,13 +27,13 @@ class PostSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'author_id', 'username', 'display_name', 'avatar_url', 'is_verified', 'is_creator',
             'content', 'media_url', 'media_type', 'likes_count',
-            'comments_count', 'shares_count', 'httn_earned',
+            'comments_count', 'shares_count', 'bookmarks_count', 'httn_earned',
             'is_liked', 'is_reposted', 'is_bookmarked',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'author_id', 'username', 'display_name', 'avatar_url', 'is_verified', 'is_creator',
-            'likes_count', 'comments_count', 'shares_count', 'httn_earned',
+            'likes_count', 'comments_count', 'shares_count', 'bookmarks_count', 'httn_earned',
             'is_liked', 'is_reposted', 'is_bookmarked',
             'created_at', 'updated_at'
         ]
@@ -78,6 +79,12 @@ class PostSerializer(serializers.ModelSerializer):
         except:
             return False
 
+    def get_bookmarks_count(self, obj):
+        try:
+            return obj.bookmarks.count()
+        except Exception:
+            return 0
+
     def get_is_liked(self, obj):
         profile = self._get_user_profile()
         if not profile:
@@ -109,6 +116,7 @@ class PostSerializer(serializers.ModelSerializer):
                 'likes_count': instance.likes_count,
                 'comments_count': instance.comments_count,
                 'shares_count': instance.shares_count,
+                'bookmarks_count': 0,
                 'httn_earned': instance.httn_earned,
                 'created_at': instance.created_at.isoformat() if instance.created_at else None,
                 'updated_at': instance.updated_at.isoformat() if instance.updated_at else None,
