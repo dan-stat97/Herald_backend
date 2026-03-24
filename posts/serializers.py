@@ -39,15 +39,22 @@ class PostSerializer(serializers.ModelSerializer):
         ]
 
     def _get_user_profile(self):
-        """Return the users.User profile for the authenticated request user, or None."""
+        """Return the users.User profile for the authenticated request user, or None.
+        Result is cached in serializer context so list serialisation only hits the DB once."""
         request = self.context.get('request')
         if not request or not request.user or not request.user.is_authenticated:
             return None
+        _SENTINEL = object()
+        cached = self.context.get('_cached_user_profile', _SENTINEL)
+        if cached is not _SENTINEL:
+            return cached
         try:
             from users.models import User as UserProfile
-            return UserProfile.objects.get(user_id=request.user)
+            profile = UserProfile.objects.get(user_id=request.user)
         except Exception:
-            return None
+            profile = None
+        self.context['_cached_user_profile'] = profile
+        return profile
 
     def get_username(self, obj):
         try:

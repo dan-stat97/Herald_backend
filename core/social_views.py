@@ -149,11 +149,15 @@ class BookmarkViewSet(viewsets.GenericViewSet):
     def bookmark(self, request, pk=None):
         """Bookmark a post"""
         from posts.models import Post, PostBookmark
+        from django.db.models import F
         try:
             profile = self._get_profile(request)
             post = Post.objects.get(id=pk)
-            PostBookmark.objects.get_or_create(post=post, user=profile)
-            return Response({'success': True, 'bookmarked': True})
+            _, created = PostBookmark.objects.get_or_create(post=post, user=profile)
+            if created:
+                Post.objects.filter(pk=post.pk).update(bookmarks_count=F('bookmarks_count') + 1)
+                post.refresh_from_db(fields=['bookmarks_count'])
+            return Response({'success': True, 'bookmarked': True, 'bookmarks_count': post.bookmarks_count})
         except Post.DoesNotExist:
             return Response({'error': 'Post not found'}, status=404)
 
@@ -161,11 +165,15 @@ class BookmarkViewSet(viewsets.GenericViewSet):
     def unbookmark(self, request, pk=None):
         """Remove bookmark from post"""
         from posts.models import Post, PostBookmark
+        from django.db.models import F
         try:
             profile = self._get_profile(request)
             post = Post.objects.get(id=pk)
-            PostBookmark.objects.filter(post=post, user=profile).delete()
-            return Response({'success': True, 'bookmarked': False})
+            deleted, _ = PostBookmark.objects.filter(post=post, user=profile).delete()
+            if deleted:
+                Post.objects.filter(pk=post.pk).update(bookmarks_count=F('bookmarks_count') - 1)
+                post.refresh_from_db(fields=['bookmarks_count'])
+            return Response({'success': True, 'bookmarked': False, 'bookmarks_count': post.bookmarks_count})
         except Post.DoesNotExist:
             return Response({'error': 'Post not found'}, status=404)
 

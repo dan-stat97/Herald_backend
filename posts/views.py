@@ -112,8 +112,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		_, created = PostLike.objects.get_or_create(post=post, user=profile)
 		if created:
 			Post.objects.filter(pk=post.pk).update(likes_count=F('likes_count') + 1)
-			post.refresh_from_db(fields=['likes_count'])
-
+		post.refresh_from_db(fields=['likes_count'])
 		return Response({'success': True, 'liked': True, 'likes_count': post.likes_count})
 
 	@action(detail=True, methods=['delete', 'post'])
@@ -127,8 +126,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		deleted, _ = PostLike.objects.filter(post=post, user=profile).delete()
 		if deleted:
 			Post.objects.filter(pk=post.pk).update(likes_count=F('likes_count') - 1)
-			post.refresh_from_db(fields=['likes_count'])
-
+		post.refresh_from_db(fields=['likes_count'])
 		return Response({'success': True, 'liked': False, 'likes_count': post.likes_count})
 
 	@action(detail=True, methods=['post'])
@@ -143,8 +141,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		_, created = PostRepost.objects.get_or_create(post=post, user=profile)
 		if created:
 			Post.objects.filter(pk=post.pk).update(shares_count=F('shares_count') + 1)
-			post.refresh_from_db(fields=['shares_count'])
-
+		post.refresh_from_db(fields=['shares_count'])
 		return Response({'success': True, 'reposted': True, 'shares_count': post.shares_count})
 
 	@action(detail=True, methods=['post'])
@@ -158,7 +155,8 @@ class PostViewSet(viewsets.ModelViewSet):
 		_, created = PostBookmark.objects.get_or_create(post=post, user=profile)
 		if created:
 			Post.objects.filter(pk=post.pk).update(bookmarks_count=F('bookmarks_count') + 1)
-		return Response({'success': True, 'bookmarked': True})
+		post.refresh_from_db(fields=['bookmarks_count'])
+		return Response({'success': True, 'bookmarked': True, 'bookmarks_count': post.bookmarks_count})
 
 	@action(detail=True, methods=['post', 'delete'])
 	def unbookmark(self, request, pk=None):
@@ -171,7 +169,8 @@ class PostViewSet(viewsets.ModelViewSet):
 		deleted, _ = PostBookmark.objects.filter(post=post, user=profile).delete()
 		if deleted:
 			Post.objects.filter(pk=post.pk).update(bookmarks_count=F('bookmarks_count') - 1)
-		return Response({'success': True, 'bookmarked': False})
+		post.refresh_from_db(fields=['bookmarks_count'])
+		return Response({'success': True, 'bookmarked': False, 'bookmarks_count': post.bookmarks_count})
 
 	@action(detail=False, methods=['get'])
 	def my(self, request):

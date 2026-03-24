@@ -1,5 +1,3 @@
-# Post interaction endpoints (handled in urlpatterns below if needed)
-from posts.interactions import PostLikeView, PostShareView, PostBookmarkView
 # core/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
