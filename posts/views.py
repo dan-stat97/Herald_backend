@@ -156,6 +156,8 @@ class PostViewSet(viewsets.ModelViewSet):
 			return Response({'error': 'User profile not found'}, status=404)
 
 		_, created = PostBookmark.objects.get_or_create(post=post, user=profile)
+		if created:
+			Post.objects.filter(pk=post.pk).update(bookmarks_count=F('bookmarks_count') + 1)
 		return Response({'success': True, 'bookmarked': True})
 
 	@action(detail=True, methods=['post', 'delete'])
@@ -166,7 +168,9 @@ class PostViewSet(viewsets.ModelViewSet):
 		except UserProfile.DoesNotExist:
 			return Response({'error': 'User profile not found'}, status=404)
 
-		PostBookmark.objects.filter(post=post, user=profile).delete()
+		deleted, _ = PostBookmark.objects.filter(post=post, user=profile).delete()
+		if deleted:
+			Post.objects.filter(pk=post.pk).update(bookmarks_count=F('bookmarks_count') - 1)
 		return Response({'success': True, 'bookmarked': False})
 
 	@action(detail=False, methods=['get'])

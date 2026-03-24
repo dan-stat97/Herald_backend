@@ -81,7 +81,7 @@ class PostSerializer(serializers.ModelSerializer):
 
     def get_bookmarks_count(self, obj):
         try:
-            return obj.bookmarks.count()
+            return obj.bookmarks_count
         except Exception:
             return 0
 

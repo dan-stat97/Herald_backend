@@ -12,6 +12,7 @@ class Post(models.Model):
 	likes_count = models.IntegerField(default=0)
 	comments_count = models.IntegerField(default=0)
 	shares_count = models.IntegerField(default=0)
+	bookmarks_count = models.IntegerField(default=0)
 	httn_earned = models.IntegerField(default=0)
 	created_at = models.DateTimeField(auto_now_add=True)
 	updated_at = models.DateTimeField(auto_now=True)
