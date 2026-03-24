@@ -6,6 +6,7 @@ from django.db.models import F
 from .models import Post, PostLike, PostRepost, PostBookmark
 from .serializers import PostSerializer, PostCreateSerializer
 from users.models import User as UserProfile
+from users.views import ensure_user_profile
 from core.pagination import StandardPagination
 
 class PostViewSet(viewsets.ModelViewSet):
@@ -98,7 +99,7 @@ class PostViewSet(viewsets.ModelViewSet):
 
 	def _get_profile(self, request):
 		"""Return the users.User profile for the authenticated user."""
-		return UserProfile.objects.get(user_id=request.user)
+		return ensure_user_profile(request.user)
 
 	@action(detail=True, methods=['post'])
 	def like(self, request, pk=None):

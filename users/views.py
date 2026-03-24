@@ -9,6 +9,37 @@ from .models import User as UserProfile
 from .serializers import UserSignupSerializer, UserProfileSerializer
 from posts.models import Post
 
+
+def ensure_user_profile(auth_user):
+	profile, created = UserProfile.objects.get_or_create(
+		user_id=auth_user,
+		defaults={
+			'username': auth_user.username,
+			'display_name': auth_user.first_name or auth_user.username,
+			'full_name': auth_user.get_full_name() or auth_user.username,
+			'email': auth_user.email or '',
+		},
+	)
+
+	updated_fields = []
+	if not profile.username and auth_user.username:
+		profile.username = auth_user.username
+		updated_fields.append('username')
+	if not profile.display_name:
+		profile.display_name = auth_user.first_name or auth_user.username
+		updated_fields.append('display_name')
+	if not profile.full_name:
+		profile.full_name = auth_user.get_full_name() or auth_user.username
+		updated_fields.append('full_name')
+	if not profile.email and auth_user.email:
+		profile.email = auth_user.email
+		updated_fields.append('email')
+
+	if updated_fields:
+		profile.save(update_fields=updated_fields + ['updated_at'])
+
+	return profile
+
 class UserProfileViewSet(viewsets.ModelViewSet):
 	queryset = UserProfile.objects.all()
 	serializer_class = UserProfileSerializer
@@ -40,7 +71,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 
 	@action(detail=False, methods=['get', 'patch', 'delete'], url_path='me')
 	def me(self, request):
-		profile = UserProfile.objects.get(user_id=request.user)
+		profile = ensure_user_profile(request.user)
 		if request.method == 'GET':
 			return Response(UserProfileSerializer(profile).data)
 		elif request.method == 'PATCH':
@@ -55,7 +86,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 
 	@action(detail=False, methods=['get'], url_path='me/stats')
 	def stats(self, request):
-		profile = UserProfile.objects.get(user_id=request.user)
+		profile = ensure_user_profile(request.user)
 		# Example stats, expand as needed
 		stats = {
 			'posts_count': profile.posts.count() if hasattr(profile, 'posts') else 0,
@@ -67,7 +98,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 
 	@action(detail=False, methods=['patch'], url_path='me/settings')
 	def update_settings(self, request):
-		profile = UserProfile.objects.get(user_id=request.user)
+		profile = ensure_user_profile(request.user)
 		# Assume settings fields are in request.data
 		allowed_fields = ['notifications_enabled', 'privacy_level', 'email_updates']
 		for field in allowed_fields:
@@ -131,7 +162,7 @@ class SigninView(views.APIView):
 		if not user:
 			return Response({'error': 'Invalid credentials'}, status=401)
 		refresh = RefreshToken.for_user(user)
-		profile = UserProfile.objects.get(user_id=user)
+		profile = ensure_user_profile(user)
 		return Response({
 			'user': UserProfileSerializer(profile).data,
 			'session': {
@@ -153,7 +184,7 @@ class RefreshView(TokenRefreshView):
 class SessionView(views.APIView):
 	permission_classes = [permissions.IsAuthenticated]
 	def get(self, request):
-		profile = UserProfile.objects.get(user_id=request.user)
+		profile = ensure_user_profile(request.user)
 		return Response({
 			'authenticated': True,
 			'user': UserProfileSerializer(profile).data
@@ -223,5 +254,5 @@ class ClaimTaskRewardView(views.APIView):
 class CurrentUserView(views.APIView):
 	permission_classes = [permissions.IsAuthenticated]
 	def get(self, request):
-		profile = UserProfile.objects.get(user_id=request.user)
+		profile = ensure_user_profile(request.user)
 		return Response(UserProfileSerializer(profile).data)

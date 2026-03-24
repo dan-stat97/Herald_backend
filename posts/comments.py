@@ -1,11 +1,11 @@
 from rest_framework import viewsets, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from users.models import User as UserProfile
 from django.shortcuts import get_object_or_404
 from .models import Post, Comment
 from .serializers import CommentSerializer
 from core.pagination import StandardPagination
+from users.views import ensure_user_profile
 
 class CommentViewSet(viewsets.ModelViewSet):
     queryset = Comment.objects.all().order_by('-created_at')
@@ -16,7 +16,7 @@ class CommentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         post_id = self.kwargs.get('post_id') or self.request.data.get('post_id')
         post = get_object_or_404(Post, id=post_id)
-        user = UserProfile.objects.get(user_id=self.request.user)
+        user = ensure_user_profile(self.request.user)
         serializer.save(post=post, author=user)
         post.comments_count = max(0, (post.comments_count or 0) + 1)
         post.save(update_fields=['comments_count', 'updated_at'])
