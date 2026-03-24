@@ -160,6 +160,7 @@ urlpatterns = [
     path('v1/notifications/clear-all/', NotificationViewSet.as_view({'delete': 'clear_all'}), name='notifications-clear-all'),
     path('v1/posts/<pk>/like/', PostViewSet.as_view({'post': 'like', 'delete': 'unlike'}), name='post-like'),
     path('v1/posts/<pk>/unlike/', PostViewSet.as_view({'post': 'unlike'}), name='post-unlike'),
+    path('v1/posts/<pk>/share/', PostViewSet.as_view({'post': 'share'}), name='post-share'),
     path('v1/posts/<uuid:post_id>/comments/', CommentViewSet.as_view({'get': 'list', 'post': 'create'}), name='post-comments'),
     path('v1/comments/<uuid:pk>/like/', CommentViewSet.as_view({'post': 'like'}), name='comment-like'),
     
