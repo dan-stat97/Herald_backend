@@ -41,17 +41,39 @@ class AvatarUploadView(views.APIView):
             )
         
         try:
-            # Save avatar
-            profile.avatar_url = f'/media/avatars/{request.user.id}/{avatar_file.name}'
+            from django.conf import settings as django_settings
+            import cloudinary.uploader
+
+            if django_settings.CLOUDINARY_ENABLED:
+                # Upload to Cloudinary with face-cropping to a 400×400 thumbnail
+                result = cloudinary.uploader.upload(
+                    avatar_file,
+                    folder='herald/avatars',
+                    public_id=f'user_{request.user.id}',
+                    overwrite=True,
+                    resource_type='image',
+                    quality='auto',
+                    fetch_format='auto',
+                    width=400,
+                    height=400,
+                    crop='fill',
+                    gravity='face',
+                )
+                avatar_url = result['secure_url']
+            else:
+                # Dev fallback — local path (ephemeral on Render, fine for local dev)
+                avatar_url = f'/media/avatars/{request.user.id}/{avatar_file.name}'
+
+            profile.avatar_url = avatar_url
             profile.save()
-            
+
             return Response({
                 'success': True,
                 'message': 'Avatar uploaded successfully',
                 'avatar_url': profile.avatar_url,
                 'user': UserProfileSerializer(profile).data
             }, status=status.HTTP_200_OK)
-            
+
         except Exception as e:
             return Response(
                 {'error': f'Failed to upload avatar: {str(e)}'},

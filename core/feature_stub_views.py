@@ -137,22 +137,78 @@ class MessageUnreadCountView(APIView):
 
 
 class MediaUploadView(APIView):
+    """Upload media (image/video) to Cloudinary and return the public URL."""
     permission_classes = [permissions.IsAuthenticated]
 
-    def post(self, request):
-        media = request.FILES.get("file") or request.FILES.get("media")
-        if not media:
-            return Response({"error": "file is required"}, status=status.HTTP_400_BAD_REQUEST)
+    # Max sizes
+    MAX_IMAGE_SIZE = 10 * 1024 * 1024   # 10 MB
+    MAX_VIDEO_SIZE = 100 * 1024 * 1024  # 100 MB
 
-        return Response(
-            {
-                "url": f"/media/{media.name}",
-                "name": media.name,
-                "size": media.size,
-                "content_type": getattr(media, "content_type", None),
-            },
-            status=status.HTTP_201_CREATED,
-        )
+    ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
+    ALLOWED_VIDEO_TYPES = {'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm'}
+
+    def post(self, request):
+        from django.conf import settings
+        import cloudinary.uploader
+
+        media = request.FILES.get('file') or request.FILES.get('media')
+        if not media:
+            return Response({'error': 'file is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        content_type = getattr(media, 'content_type', '') or ''
+        is_image = content_type in self.ALLOWED_IMAGE_TYPES
+        is_video = content_type in self.ALLOWED_VIDEO_TYPES
+
+        if not is_image and not is_video:
+            return Response(
+                {'error': 'Unsupported file type. Allowed: JPEG, PNG, GIF, WEBP, MP4, MOV, AVI, WEBM'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        max_size = self.MAX_IMAGE_SIZE if is_image else self.MAX_VIDEO_SIZE
+        if media.size > max_size:
+            limit_mb = max_size // (1024 * 1024)
+            return Response(
+                {'error': f'File too large. Maximum size is {limit_mb}MB'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not settings.CLOUDINARY_ENABLED:
+            # Dev fallback: return a placeholder so the UI doesn't crash
+            return Response(
+                {'url': '', 'name': media.name, 'error': 'Cloudinary not configured'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        try:
+            resource_type = 'image' if is_image else 'video'
+            folder = f'herald/posts/{resource_type}s'
+
+            result = cloudinary.uploader.upload(
+                media,
+                folder=folder,
+                resource_type=resource_type,
+                # Auto-quality & format optimisation for images
+                quality='auto' if is_image else None,
+                fetch_format='auto' if is_image else None,
+            )
+
+            return Response(
+                {
+                    'url': result['secure_url'],
+                    'public_id': result['public_id'],
+                    'name': media.name,
+                    'size': media.size,
+                    'content_type': content_type,
+                    'resource_type': resource_type,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Upload failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 class ScheduledPostsView(APIView):
