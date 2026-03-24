@@ -20,6 +20,7 @@ from .serializers import (
     NotificationSerializer, CommentSerializer, FollowSerializer, BookmarkSerializer,
 )
 from rest_framework import serializers
+from core.pagination import StandardPagination
 
 import uuid
 
@@ -194,10 +195,31 @@ class NewsViewSet(viewsets.ReadOnlyModelViewSet):
     """News articles — uses NewsArticle model with extended fields."""
     permission_classes = [permissions.AllowAny]
     serializer_class = NewsArticleSerializer
+    pagination_class = StandardPagination
 
     def get_queryset(self):
         try:
-            return NewsArticle.objects.all().order_by('-created_at')
+            queryset = NewsArticle.objects.all().order_by('-created_at')
+            category = self.request.query_params.get('category')
+            source_type = self.request.query_params.get('source_type')
+            sort = self.request.query_params.get('sort') or '-created_at'
+
+            if category:
+                queryset = queryset.filter(category__icontains=category)
+
+            if source_type:
+                normalized = source_type.lower()
+                if normalized == 'herald':
+                    queryset = queryset.exclude(category__icontains='loveworld').exclude(category__icontains='external')
+                elif normalized == 'loveworld':
+                    queryset = queryset.filter(category__icontains='loveworld')
+                elif normalized == 'external':
+                    queryset = queryset.filter(category__icontains='external')
+
+            if sort in {'created_at', '-created_at', 'likes_count', '-likes_count'}:
+                queryset = queryset.order_by(sort)
+
+            return queryset
         except Exception:
             # Fallback to old News model if new table doesn't exist yet
             return News.objects.none()

@@ -2,11 +2,39 @@ from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework import serializers
 from .models import LiveStream
+from core.pagination import StandardPagination
+
+
+class LiveStreamSerializer(serializers.ModelSerializer):
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
+    host = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LiveStream
+        fields = [
+            'id', 'user_id', 'host', 'title', 'description',
+            'status', 'stream_url', 'thumbnail_url', 'viewer_count',
+            'started_at', 'ended_at', 'scheduled_for', 'created_at'
+        ]
+        read_only_fields = ['id', 'user_id', 'host', 'viewer_count', 'started_at', 'ended_at', 'created_at']
+
+    def get_host(self, obj):
+        user = obj.user
+        return {
+            'id': str(user.id),
+            'username': user.username,
+            'display_name': user.display_name or user.username,
+            'avatar_url': user.avatar_url,
+            'is_verified': bool(user.is_verified),
+        }
 
 
 class LiveStreamViewSet(viewsets.ModelViewSet):
     """CRUD operations for live streams"""
+    serializer_class = LiveStreamSerializer
+    pagination_class = StandardPagination
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
@@ -15,33 +43,19 @@ class LiveStreamViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         status_filter = self.request.query_params.get('status')
-        queryset = LiveStream.objects.all()
+        queryset = LiveStream.objects.all().select_related('user')
         
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         
         if status_filter == 'live':
-            queryset = queryset.order_by('-viewer_count')
-        
+            queryset = queryset.order_by('-viewer_count', '-started_at', '-created_at')
+        elif status_filter == 'scheduled':
+            queryset = queryset.order_by('scheduled_for', '-created_at')
+        else:
+            queryset = queryset.order_by('-created_at')
+
         return queryset
-    
-    def get_serializer_class(self):
-        from rest_framework import serializers
-        
-        class LiveStreamSerializer(serializers.ModelSerializer):
-            username = serializers.CharField(source='user.username', read_only=True)
-            user_avatar = serializers.URLField(source='user.avatar_url', read_only=True)
-            
-            class Meta:
-                model = LiveStream
-                fields = [
-                    'id', 'user', 'username', 'user_avatar', 'title', 'description',
-                    'status', 'stream_url', 'thumbnail_url', 'viewer_count',
-                    'started_at', 'ended_at', 'scheduled_for', 'created_at'
-                ]
-                read_only_fields = ['id', 'user', 'viewer_count', 'started_at', 'ended_at', 'created_at']
-        
-        return LiveStreamSerializer
     
     def perform_create(self, serializer):
         """Create stream with authenticated user"""

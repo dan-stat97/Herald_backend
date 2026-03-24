@@ -53,7 +53,15 @@ class TrendingTopicsView(APIView):
             tags = hashtag_pattern.findall(content)
             counter.update(tag.lower() for tag in tags)
 
-        data = [{"topic": topic, "count": count} for topic, count in counter.most_common(limit)]
+        data = [
+            {
+                "name": f"#{topic}",
+                "topic": topic,
+                "tag": f"#{topic}",
+                "posts_count": count,
+            }
+            for topic, count in counter.most_common(limit)
+        ]
         return Response(data)
 
 
