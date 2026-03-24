@@ -115,12 +115,28 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# Media files configuration
+# Media files configuration (local fallback for dev)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
+
+# ─── Cloudinary ────────────────────────────────────────────────────────────────
+# Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
+# as environment variables on Render (or in .env locally).
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
+
+cloudinary.config(
+    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME', ''),
+    api_key=os.environ.get('CLOUDINARY_API_KEY', ''),
+    api_secret=os.environ.get('CLOUDINARY_API_SECRET', ''),
+    secure=True,
+)
+CLOUDINARY_ENABLED = bool(os.environ.get('CLOUDINARY_CLOUD_NAME'))
+# ───────────────────────────────────────────────────────────────────────────────
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

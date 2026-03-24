@@ -33,6 +33,45 @@ class Comment(models.Model):
 		return f"{self.author.username}: {self.content[:30]}"
 
 
+class PostLike(models.Model):
+	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+	post = models.ForeignKey(Post, related_name='likes', on_delete=models.CASCADE)
+	user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='post_likes')
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		unique_together = ('post', 'user')
+
+	def __str__(self):
+		return f"{self.user} liked {self.post_id}"
+
+
+class PostRepost(models.Model):
+	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+	post = models.ForeignKey(Post, related_name='reposts', on_delete=models.CASCADE)
+	user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='post_reposts')
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		unique_together = ('post', 'user')
+
+	def __str__(self):
+		return f"{self.user} reposted {self.post_id}"
+
+
+class PostBookmark(models.Model):
+	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+	post = models.ForeignKey(Post, related_name='bookmarks', on_delete=models.CASCADE)
+	user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='post_bookmarks')
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		unique_together = ('post', 'user')
+
+	def __str__(self):
+		return f"{self.user} bookmarked {self.post_id}"
+
+
 class ScheduledPost(models.Model):
 	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 	user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='scheduled_posts')

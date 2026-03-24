@@ -1,6 +1,6 @@
 
 from rest_framework import serializers
-from .models import Post, Comment
+from .models import Post, Comment, PostLike, PostRepost, PostBookmark
 from users.serializers import UserProfileSerializer
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -17,28 +17,49 @@ class PostSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     is_verified = serializers.SerializerMethodField()
     is_creator = serializers.SerializerMethodField()
-    
+    is_liked = serializers.SerializerMethodField()
+    is_reposted = serializers.SerializerMethodField()
+    is_bookmarked = serializers.SerializerMethodField()
+
     class Meta:
         model = Post
         fields = [
             'id', 'author_id', 'username', 'display_name', 'avatar_url', 'is_verified', 'is_creator',
             'content', 'media_url', 'media_type', 'likes_count',
-            'comments_count', 'shares_count', 'httn_earned', 'created_at', 'updated_at'
+            'comments_count', 'shares_count', 'httn_earned',
+            'is_liked', 'is_reposted', 'is_bookmarked',
+            'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'author_id', 'username', 'display_name', 'avatar_url', 'is_verified', 'is_creator', 'likes_count', 'comments_count', 'shares_count', 'httn_earned', 'created_at', 'updated_at']
-    
+        read_only_fields = [
+            'id', 'author_id', 'username', 'display_name', 'avatar_url', 'is_verified', 'is_creator',
+            'likes_count', 'comments_count', 'shares_count', 'httn_earned',
+            'is_liked', 'is_reposted', 'is_bookmarked',
+            'created_at', 'updated_at'
+        ]
+
+    def _get_user_profile(self):
+        """Return the users.User profile for the authenticated request user, or None."""
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return None
+        try:
+            from users.models import User as UserProfile
+            return UserProfile.objects.get(user_id=request.user)
+        except Exception:
+            return None
+
     def get_username(self, obj):
         try:
             return obj.author_id.username if obj.author_id else 'unknown'
         except:
             return 'unknown'
-    
+
     def get_display_name(self, obj):
         try:
             return obj.author_id.display_name if obj.author_id else 'Unknown User'
         except:
             return 'Unknown User'
-    
+
     def get_avatar_url(self, obj):
         try:
             return obj.author_id.avatar_url if obj.author_id else None
@@ -56,7 +77,25 @@ class PostSerializer(serializers.ModelSerializer):
             return bool(obj.author_id.is_creator) if obj.author_id else False
         except:
             return False
-    
+
+    def get_is_liked(self, obj):
+        profile = self._get_user_profile()
+        if not profile:
+            return False
+        return PostLike.objects.filter(post=obj, user=profile).exists()
+
+    def get_is_reposted(self, obj):
+        profile = self._get_user_profile()
+        if not profile:
+            return False
+        return PostRepost.objects.filter(post=obj, user=profile).exists()
+
+    def get_is_bookmarked(self, obj):
+        profile = self._get_user_profile()
+        if not profile:
+            return False
+        return PostBookmark.objects.filter(post=obj, user=profile).exists()
+
     def to_representation(self, instance):
         try:
             return super().to_representation(instance)
@@ -78,7 +117,10 @@ class PostSerializer(serializers.ModelSerializer):
                 'display_name': 'Unknown User',
                 'avatar_url': None,
                 'is_verified': False,
-                'is_creator': False
+                'is_creator': False,
+                'is_liked': False,
+                'is_reposted': False,
+                'is_bookmarked': False,
             }
             return data
 

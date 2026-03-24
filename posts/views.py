@@ -2,7 +2,8 @@
 from rest_framework import viewsets, permissions, filters
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from .models import Post
+from django.db.models import F
+from .models import Post, PostLike, PostRepost, PostBookmark
 from .serializers import PostSerializer, PostCreateSerializer
 from users.models import User as UserProfile
 from core.pagination import StandardPagination
@@ -95,26 +96,77 @@ class PostViewSet(viewsets.ModelViewSet):
 			from rest_framework.exceptions import ValidationError
 			raise ValidationError("User profile not found. Please complete your profile first.")
 
+	def _get_profile(self, request):
+		"""Return the users.User profile for the authenticated user."""
+		return UserProfile.objects.get(user_id=request.user)
+
 	@action(detail=True, methods=['post'])
 	def like(self, request, pk=None):
 		post = self.get_object()
-		post.likes_count += 1
-		post.save(update_fields=['likes_count', 'updated_at'])
-		return Response({'success': True, 'likes_count': post.likes_count})
+		try:
+			profile = self._get_profile(request)
+		except UserProfile.DoesNotExist:
+			return Response({'error': 'User profile not found'}, status=404)
+
+		_, created = PostLike.objects.get_or_create(post=post, user=profile)
+		if created:
+			Post.objects.filter(pk=post.pk).update(likes_count=F('likes_count') + 1)
+			post.refresh_from_db(fields=['likes_count'])
+
+		return Response({'success': True, 'liked': True, 'likes_count': post.likes_count})
 
 	@action(detail=True, methods=['delete', 'post'])
 	def unlike(self, request, pk=None):
 		post = self.get_object()
-		post.likes_count = max(0, post.likes_count - 1)
-		post.save(update_fields=['likes_count', 'updated_at'])
-		return Response({'success': True, 'likes_count': post.likes_count})
+		try:
+			profile = self._get_profile(request)
+		except UserProfile.DoesNotExist:
+			return Response({'error': 'User profile not found'}, status=404)
+
+		deleted, _ = PostLike.objects.filter(post=post, user=profile).delete()
+		if deleted:
+			Post.objects.filter(pk=post.pk).update(likes_count=F('likes_count') - 1)
+			post.refresh_from_db(fields=['likes_count'])
+
+		return Response({'success': True, 'liked': False, 'likes_count': post.likes_count})
 
 	@action(detail=True, methods=['post'])
 	def share(self, request, pk=None):
+		"""Repost / share a post — idempotent per user."""
 		post = self.get_object()
-		post.shares_count += 1
-		post.save(update_fields=['shares_count', 'updated_at'])
-		return Response({'success': True, 'shares_count': post.shares_count})
+		try:
+			profile = self._get_profile(request)
+		except UserProfile.DoesNotExist:
+			return Response({'error': 'User profile not found'}, status=404)
+
+		_, created = PostRepost.objects.get_or_create(post=post, user=profile)
+		if created:
+			Post.objects.filter(pk=post.pk).update(shares_count=F('shares_count') + 1)
+			post.refresh_from_db(fields=['shares_count'])
+
+		return Response({'success': True, 'reposted': True, 'shares_count': post.shares_count})
+
+	@action(detail=True, methods=['post'])
+	def bookmark(self, request, pk=None):
+		post = self.get_object()
+		try:
+			profile = self._get_profile(request)
+		except UserProfile.DoesNotExist:
+			return Response({'error': 'User profile not found'}, status=404)
+
+		_, created = PostBookmark.objects.get_or_create(post=post, user=profile)
+		return Response({'success': True, 'bookmarked': True})
+
+	@action(detail=True, methods=['post', 'delete'])
+	def unbookmark(self, request, pk=None):
+		post = self.get_object()
+		try:
+			profile = self._get_profile(request)
+		except UserProfile.DoesNotExist:
+			return Response({'error': 'User profile not found'}, status=404)
+
+		PostBookmark.objects.filter(post=post, user=profile).delete()
+		return Response({'success': True, 'bookmarked': False})
 
 	@action(detail=False, methods=['get'])
 	def my(self, request):
