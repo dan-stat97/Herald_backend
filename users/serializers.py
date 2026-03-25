@@ -12,10 +12,13 @@ class UserSignupSerializer(serializers.Serializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     email = serializers.SerializerMethodField()
+    followers_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
     class Meta:
         model = UserProfile
         fields = [
             'id', 'user_id', 'username', 'display_name', 'full_name', 'email', 'avatar_url', 'bio',
+            'followers_count', 'following_count',
             'notifications_enabled', 'privacy_level', 'email_updates', 'interests', 'onboarding_completed',
             'tier', 'reputation', 'is_verified', 'is_creator', 'created_at', 'updated_at'
         ]
@@ -26,6 +29,20 @@ class UserProfileSerializer(serializers.ModelSerializer):
             return obj.user_id.email if obj.user_id else obj.email
         except:
             return obj.email
+
+    def get_followers_count(self, obj):
+        try:
+            from core.models import Follow
+            return Follow.objects.filter(following_id=obj.id).count()
+        except Exception:
+            return 0
+
+    def get_following_count(self, obj):
+        try:
+            from core.models import Follow
+            return Follow.objects.filter(follower_id=obj.id).count()
+        except Exception:
+            return 0
 
 
 class UserReplySerializer(serializers.ModelSerializer):
