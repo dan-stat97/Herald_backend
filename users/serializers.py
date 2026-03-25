@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import User as UserProfile
+from posts.models import Comment
 
 class UserSignupSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -25,3 +26,49 @@ class UserProfileSerializer(serializers.ModelSerializer):
             return obj.user_id.email if obj.user_id else obj.email
         except:
             return obj.email
+
+
+class UserReplySerializer(serializers.ModelSerializer):
+    post_id = serializers.UUIDField(source='post.id', read_only=True)
+    post_content = serializers.CharField(source='post.content', read_only=True)
+    post_media_url = serializers.CharField(source='post.media_url', read_only=True, allow_null=True)
+    post_media_type = serializers.CharField(source='post.media_type', read_only=True, allow_null=True)
+    post_author_username = serializers.SerializerMethodField()
+    post_author_display_name = serializers.SerializerMethodField()
+    post_author_avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Comment
+        fields = [
+            'id',
+            'content',
+            'likes_count',
+            'created_at',
+            'updated_at',
+            'post_id',
+            'post_content',
+            'post_media_url',
+            'post_media_type',
+            'post_author_username',
+            'post_author_display_name',
+            'post_author_avatar_url',
+        ]
+        read_only_fields = fields
+
+    def get_post_author_username(self, obj):
+        try:
+            return obj.post.author_id.username if obj.post and obj.post.author_id else 'unknown'
+        except Exception:
+            return 'unknown'
+
+    def get_post_author_display_name(self, obj):
+        try:
+            return obj.post.author_id.display_name if obj.post and obj.post.author_id else 'Unknown User'
+        except Exception:
+            return 'Unknown User'
+
+    def get_post_author_avatar_url(self, obj):
+        try:
+            return obj.post.author_id.avatar_url if obj.post and obj.post.author_id else None
+        except Exception:
+            return None

@@ -13,7 +13,7 @@ from wallets.transfer import WalletTransferView
 from wallets.advanced import WalletTransactionsView, WalletConvertView, WalletWithdrawView
 from posts.comments import CommentViewSet
 from users.follows import FollowViewSet
-from users.views import UserProfileViewSet, UserByUsernameView, UserPostsView, UserTasksView, ClaimTaskRewardView
+from users.views import UserProfileViewSet, UserByUsernameView, UserPostsView, UserRepliesView, UserTasksView, ClaimTaskRewardView
 from users.extra_views import (
     UserSuggestionsView,
     UserSearchView,
@@ -117,6 +117,7 @@ urlpatterns = [
     path('v1/users/me/stats/', UserProfileViewSet.as_view({'get': 'stats'}), name='users-me-stats'),
     path('v1/users/me/settings/', UserSettingsView.as_view(), name='users-me-settings'),
     path('v1/users/me/posts/', UserPostsView.as_view(), name='users-me-posts'),
+    path('v1/users/me/replies/', UserRepliesView.as_view(), name='users-me-replies'),
     path('v1/users/me/tasks/', UserTasksView.as_view(), name='users-me-tasks'),
     path('v1/users/me/tasks/<uuid:task_id>/claim/', UserTaskClaimMeView.as_view(), name='users-me-task-claim'),
     path('v1/users/me/earnings/', UserEarningsView.as_view(), name='users-me-earnings'),
@@ -130,6 +131,7 @@ urlpatterns = [
     path('v1/users/<uuid:pk>/', UserProfileViewSet.as_view({'get': 'retrieve'}), name='users-detail'),
     path('v1/users/<uuid:pk>/stats/', UserStatsByIdView.as_view(), name='users-stats'),
     path('v1/users/<uuid:pk>/posts/', UserPostsView.as_view(), name='users-posts'),
+    path('v1/users/<uuid:pk>/replies/', UserRepliesView.as_view(), name='users-replies'),
     path('v1/users/<uuid:pk>/tasks/', UserTasksView.as_view(), name='users-tasks'),
     path('v1/users/<uuid:pk>/tasks/<uuid:task_id>/claim/', ClaimTaskRewardView.as_view(), name='users-task-claim'),
     

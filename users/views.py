@@ -6,8 +6,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout
 from .models import User as UserProfile
-from .serializers import UserSignupSerializer, UserProfileSerializer
-from posts.models import Post
+from .serializers import UserSignupSerializer, UserProfileSerializer, UserReplySerializer
+from posts.models import Post, Comment
 
 
 def ensure_user_profile(auth_user):
@@ -229,16 +229,62 @@ class UserPostsView(views.APIView):
 				profile = UserProfile.objects.get(pk=pk)
 			except UserProfile.DoesNotExist:
 				return Response({'error': 'User not found'}, status=404)
-		
-		posts = Post.objects.filter(author_id=profile).select_related('author_id', 'author_id__user_id').order_by('-created_at')
+
+		tab = request.query_params.get('tab', 'posts')
+		base_posts = Post.objects.select_related('author_id', 'author_id__user_id')
+
+		if tab == 'likes':
+			posts = base_posts.filter(likes__user=profile).order_by('-likes__created_at').distinct()
+		elif tab == 'media':
+			posts = (
+				base_posts.filter(author_id=profile)
+				.exclude(media_url__isnull=True)
+				.exclude(media_url='')
+				.order_by('-created_at')
+			)
+		else:
+			posts = base_posts.filter(author_id=profile).order_by('-created_at')
+
 		from posts.serializers import PostSerializer
 		
 		try:
-			serializer = PostSerializer(posts, many=True)
+			serializer = PostSerializer(posts, many=True, context={'request': request})
 			return Response(serializer.data)
 		except Exception as e:
 			# Log error and return empty array rather than 500
 			print(f"Error serializing posts: {e}")
+			return Response([])
+
+
+class UserRepliesView(views.APIView):
+	permission_classes = [permissions.AllowAny]
+
+	def get(self, request, pk=None):
+		if pk is None:
+			if not request.user.is_authenticated:
+				return Response({'error': 'Authentication required'}, status=401)
+			try:
+				profile = UserProfile.objects.get(user_id=request.user)
+			except UserProfile.DoesNotExist:
+				return Response({'error': 'User profile not found'}, status=404)
+		else:
+			try:
+				profile = UserProfile.objects.get(pk=pk)
+			except UserProfile.DoesNotExist:
+				return Response({'error': 'User not found'}, status=404)
+
+		replies = (
+			Comment.objects
+			.filter(author=profile)
+			.select_related('post', 'post__author_id', 'post__author_id__user_id')
+			.order_by('-created_at')
+		)
+
+		try:
+			serializer = UserReplySerializer(replies, many=True)
+			return Response(serializer.data)
+		except Exception as e:
+			print(f"Error serializing replies: {e}")
 			return Response([])
 
 class UserTasksView(views.APIView):
