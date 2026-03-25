@@ -6,6 +6,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
 from django.db import connection
+from core.admin_views import AdminDashboardView, DBTestView
 
 
 def root(request):
@@ -36,6 +37,8 @@ def health(request):
 urlpatterns = [
     path('', root, name='root'),
     path('health/', health, name='health'),
+    path('admin/dashboard/', AdminDashboardView.as_view(), name='admin_dashboard'),
+    path('admin/db-test/', DBTestView.as_view(), name='admin_db_test'),
     path('admin/', admin.site.urls),
     
     # JWT endpoints (legacy)

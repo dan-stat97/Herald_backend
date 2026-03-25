@@ -1,0 +1,120 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<style>
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; }
+  .stat-label { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .stat-value { color: #f0f0f0; font-size: 32px; font-weight: 700; line-height: 1; margin-bottom: 6px; }
+  .stat-sub { font-size: 12px; }
+  .section { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+  .section h3 { color: #d4a847; margin: 0 0 16px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 8px 10px; color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #2a2a2a; }
+  td { padding: 10px 10px; font-size: 14px; border-bottom: 1px solid #1e1e1e; }
+  .gold { color: #d4a847; }
+  .green { color: #22c55e; }
+  .blue { color: #3b82f6; }
+  .muted { color: #666; }
+</style>
+
+<div style="padding: 24px 0;">
+  <h1 style="color: #d4a847; margin: 0 0 24px 0; font-size: 24px;">✦ Platform Dashboard</h1>
+
+  <!-- User Stats -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Users</div>
+      <div class="stat-value">{{ total_users }}</div>
+      <div class="stat-sub gold">{{ verified_users }} verified · {{ creator_users }} creators</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Posts</div>
+      <div class="stat-value">{{ total_posts }}</div>
+      <div class="stat-sub green">{{ posts_today }} today · {{ posts_week }} this week</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Comments</div>
+      <div class="stat-value">{{ total_comments }}</div>
+      <div class="stat-sub blue">{{ posts_month }} posts this month</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">HTTN Points Issued</div>
+      <div class="stat-value">{{ total_httn_points|floatformat:0 }}</div>
+      <div class="stat-sub gold">Across all wallets</div>
+    </div>
+  </div>
+
+  <!-- Ad Stats -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-label">Ad Campaigns</div>
+      <div class="stat-value">{{ total_ads }}</div>
+      <div class="stat-sub green">{{ active_ads }} active</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Impressions</div>
+      <div class="stat-value">{{ total_impressions }}</div>
+      <div class="stat-sub muted">All campaigns</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Ad Clicks</div>
+      <div class="stat-value">{{ total_clicks }}</div>
+      <div class="stat-sub muted">
+        {% if total_impressions > 0 %}
+          CTR: {{ total_clicks|floatformat:0 }} / {{ total_impressions }}
+        {% else %}
+          No impressions yet
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Tier Breakdown -->
+  {% if tier_counts %}
+  <div class="section">
+    <h3>User Tier Breakdown</h3>
+    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+      {% for tier, count in tier_counts.items %}
+      <div style="background:#111; border:1px solid #2a2a2a; border-radius:8px; padding:14px 22px; text-align:center; min-width:90px;">
+        <div style="font-size:11px; color:#888; text-transform:uppercase; margin-bottom:4px;">{{ tier }}</div>
+        <div style="font-size:26px; font-weight:700; color:#f0f0f0;">{{ count }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Recent Posts -->
+  <div class="section">
+    <h3>Recent Posts</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Author</th>
+          <th>Content</th>
+          <th style="text-align:right;">Likes</th>
+          <th style="text-align:right;">Comments</th>
+          <th style="text-align:right;">Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for post in recent_posts %}
+        <tr>
+          <td class="gold">{{ post.author_id.username|default:"—" }}</td>
+          <td style="color:#f0f0f0; max-width:400px;">{{ post.content|truncatechars:90 }}</td>
+          <td style="text-align:right; color:#ef4444;">{{ post.likes_count }}</td>
+          <td style="text-align:right; color:#3b82f6;">{{ post.comments_count }}</td>
+          <td style="text-align:right;" class="muted">{{ post.created_at|date:"M d, H:i" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" style="text-align:center; color:#555; padding:24px;">No posts yet</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div style="text-align:right; margin-top:8px;">
+    <a href="/admin/db-test/" style="color:#d4a847; font-size:13px; text-decoration:none;">→ View Database Health</a>
+  </div>
+</div>
+{% endblock %}

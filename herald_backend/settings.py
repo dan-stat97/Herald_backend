@@ -16,6 +16,7 @@ ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
 
 # Application definition
 INSTALLED_APPS = [
+    'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -57,7 +58,7 @@ ROOT_URLCONF = 'herald_backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -203,3 +204,67 @@ import dj_database_url
 # Static files configuration for production
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# ─── Jazzmin Admin UI ──────────────────────────────────────────────────────────
+JAZZMIN_SETTINGS = {
+    "site_title": "Herald Admin",
+    "site_header": "Herald Social",
+    "site_brand": "✦ Herald",
+    "site_logo": None,
+    "welcome_sign": "Welcome to Herald Social Admin",
+    "copyright": "Herald Social",
+    "search_model": ["auth.User"],
+    "topmenu_links": [
+        {"name": "Dashboard", "url": "/admin/dashboard/", "permissions": ["auth.view_user"]},
+        {"name": "DB Health", "url": "/admin/db-test/", "permissions": ["auth.view_user"]},
+        {"name": "Live Site", "url": "https://heraldsocial.vercel.app", "new_window": True},
+    ],
+    "show_sidebar": True,
+    "navigation_expanded": True,
+    "order_with_respect_to": ["auth", "users", "posts", "adminpanel", "core"],
+    "icons": {
+        "auth": "fas fa-users-cog",
+        "auth.user": "fas fa-user",
+        "auth.Group": "fas fa-users",
+        "users.User": "fas fa-id-card",
+        "posts.Post": "fas fa-file-alt",
+        "posts.Comment": "fas fa-comments",
+        "posts.PostLike": "fas fa-heart",
+        "posts.PostRepost": "fas fa-retweet",
+        "posts.PostBookmark": "fas fa-bookmark",
+        "adminpanel.AdCampaign": "fas fa-ad",
+        "adminpanel.Ban": "fas fa-ban",
+        "adminpanel.AdminReport": "fas fa-flag",
+    },
+    "default_icon_parents": "fas fa-chevron-circle-right",
+    "default_icon_children": "fas fa-circle",
+    "related_modal_active": True,
+    "show_ui_builder": False,
+    "changeform_format": "horizontal_tabs",
+    "language_chooser": False,
+}
+
+JAZZMIN_UI_TWEAKS = {
+    "navbar_small_text": False,
+    "body_small_text": False,
+    "brand_colour": "navbar-warning",
+    "accent": "accent-warning",
+    "navbar": "navbar-dark",
+    "no_navbar_border": True,
+    "navbar_fixed": True,
+    "layout_boxed": False,
+    "sidebar_fixed": True,
+    "sidebar": "sidebar-dark-warning",
+    "sidebar_nav_compact_style": False,
+    "theme": "darkly",
+    "dark_mode_theme": "darkly",
+    "button_classes": {
+        "primary": "btn-primary",
+        "secondary": "btn-secondary",
+        "info": "btn-info",
+        "warning": "btn-warning",
+        "danger": "btn-danger",
+        "success": "btn-success",
+    },
+}
+# ──────────────────────────────────────────────────────────────────────────────

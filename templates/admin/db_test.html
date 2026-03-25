@@ -1,0 +1,65 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<style>
+  .db-table { width: 100%; border-collapse: collapse; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; overflow: hidden; }
+  .db-table th { text-align: left; padding: 12px 16px; color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; background: #111; }
+  .db-table td { padding: 12px 16px; font-size: 14px; border-top: 1px solid #1e1e1e; }
+  .badge-ok { color: #22c55e; font-weight: 700; }
+  .badge-err { color: #ef4444; font-size: 12px; }
+  .alert { border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; font-weight: 600; font-size: 14px; }
+  .alert-ok { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; }
+  .alert-err { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+  .core-badge { font-size: 10px; color: #d4a847; border: 1px solid #d4a84740; border-radius: 4px; padding: 1px 5px; margin-left: 6px; vertical-align: middle; }
+</style>
+
+<div style="padding: 24px 0;">
+  <h1 style="color: #d4a847; margin: 0 0 6px 0; font-size: 24px;">🗄 Database Health Check</h1>
+  <p style="color: #666; margin: 0 0 20px 0;">
+    Engine: <strong style="color:#f0f0f0;">{{ db_info.engine }}</strong>
+    &nbsp;·&nbsp;
+    Host: <strong style="color:#f0f0f0;">{{ db_info.host }}</strong>
+  </p>
+
+  {% if overall_ok %}
+  <div class="alert alert-ok">✓ All core tables are accessible</div>
+  {% else %}
+  <div class="alert alert-err">✗ One or more core tables have issues — check errors below</div>
+  {% endif %}
+
+  <table class="db-table">
+    <thead>
+      <tr>
+        <th>Table</th>
+        <th>Label</th>
+        <th style="text-align:right;">Row Count</th>
+        <th style="text-align:center;">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      <tr style="{% if not r.ok %}background: rgba(239,68,68,0.04);{% endif %}">
+        <td style="font-family: monospace; font-size: 13px; color: #888;">
+          {{ r.table }}
+          {% if r.core %}<span class="core-badge">core</span>{% endif %}
+        </td>
+        <td style="color: #f0f0f0;">{{ r.label }}</td>
+        <td style="text-align:right; font-weight:600; color:{% if r.ok %}#f0f0f0{% else %}#555{% endif %};">
+          {% if r.ok %}{{ r.count }}{% else %}—{% endif %}
+        </td>
+        <td style="text-align:center;">
+          {% if r.ok %}
+          <span class="badge-ok">✓ OK</span>
+          {% else %}
+          <span class="badge-err" title="{{ r.error }}">✗ {{ r.error|truncatechars:60 }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div style="margin-top:20px; text-align:right;">
+    <a href="/admin/dashboard/" style="color:#d4a847; font-size:13px; text-decoration:none;">← Back to Dashboard</a>
+  </div>
+</div>
+{% endblock %}
