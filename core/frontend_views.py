@@ -78,3 +78,51 @@ class SearchPostsView(APIView):
         page = paginator.paginate_queryset(queryset, request)
         serializer = PostSerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
+
+
+class UnifiedSearchView(APIView):
+    """GET /search/?q=... — returns both users and posts in one call."""
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        from users.models import User as UserProfile
+        from users.serializers import UserProfileSerializer
+        from posts.serializers import PostSerializer
+        from django.db.models import Q as DQ
+        from core.models import Follow
+
+        query = (request.query_params.get('q') or
+                 request.query_params.get('query') or '').strip()
+        if not query:
+            return Response({'users': [], 'posts': []})
+
+        limit = min(int(request.query_params.get('limit', 10)), 50)
+
+        # --- Users ---
+        users_qs = UserProfile.objects.filter(
+            DQ(username__icontains=query) | DQ(display_name__icontains=query)
+        ).order_by('-reputation', 'username')[:limit]
+        users_data = UserProfileSerializer(users_qs, many=True).data
+
+        # Annotate is_following
+        if request.user.is_authenticated:
+            try:
+                me = UserProfile.objects.get(user_id=request.user)
+                following_ids = set(
+                    Follow.objects.filter(follower_id=me.id).values_list('following_id', flat=True)
+                )
+                users_data = [dict(u, is_following=str(u['id']) in {str(i) for i in following_ids})
+                              for u in users_data]
+            except UserProfile.DoesNotExist:
+                users_data = [dict(u, is_following=False) for u in users_data]
+        else:
+            users_data = [dict(u, is_following=False) for u in users_data]
+
+        # --- Posts (by content or hashtag) ---
+        search_term = query.lstrip('#')
+        posts_qs = Post.objects.filter(
+            content__icontains=search_term
+        ).select_related('author_id', 'author_id__user_id').order_by('-likes_count', '-created_at')[:limit * 2]
+        posts_data = PostSerializer(posts_qs, many=True).data
+
+        return Response({'users': users_data, 'posts': posts_data})

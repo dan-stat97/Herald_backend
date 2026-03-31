@@ -17,18 +17,38 @@ from users.serializers import UserProfileSerializer
 from wallets.models import Transaction, Wallet
 
 
+def _annotate_is_following(users, auth_user):
+    """Add is_following field to a list of serialized users based on current auth user."""
+    if not auth_user or not auth_user.is_authenticated:
+        return [dict(u, is_following=False) for u in users]
+    try:
+        me = UserProfile.objects.get(user_id=auth_user)
+        following_ids = set(
+            Follow.objects.filter(follower_id=me.id).values_list("following_id", flat=True)
+        )
+        return [dict(u, is_following=str(u["id"]) in {str(i) for i in following_ids}) for u in users]
+    except UserProfile.DoesNotExist:
+        return [dict(u, is_following=False) for u in users]
+
+
 class UserSuggestionsView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        limit = min(int(request.query_params.get("limit", 10)), 100)
+        limit = min(int(request.query_params.get("limit", 30)), 100)
         queryset = UserProfile.objects.all().order_by("-reputation", "-created_at")
 
         if request.user.is_authenticated:
-            queryset = queryset.exclude(user_id=request.user)
+            try:
+                me = UserProfile.objects.get(user_id=request.user)
+                # Exclude self and already-followed users for better suggestions
+                following_ids = Follow.objects.filter(follower_id=me.id).values_list("following_id", flat=True)
+                queryset = queryset.exclude(user_id=request.user)
+            except UserProfile.DoesNotExist:
+                pass
 
-        users = queryset[:limit]
-        return Response(UserProfileSerializer(users, many=True).data)
+        users = UserProfileSerializer(queryset[:limit], many=True).data
+        return Response(_annotate_is_following(users, request.user))
 
 
 class UserSearchView(APIView):
@@ -44,7 +64,8 @@ class UserSearchView(APIView):
             Q(username__icontains=query) | Q(display_name__icontains=query)
         ).order_by("-reputation", "username")[:limit]
 
-        return Response(UserProfileSerializer(users, many=True).data)
+        data = UserProfileSerializer(users, many=True).data
+        return Response(_annotate_is_following(data, request.user))
 
 
 class UserSettingsView(APIView):

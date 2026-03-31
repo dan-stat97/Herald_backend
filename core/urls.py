@@ -33,7 +33,7 @@ from .social_views import BookmarkViewSet
 from .leaderboard_views import LeaderboardViewSet
 from .auth_views import signup, signout, current_user
 from .api_root import api_root
-from .frontend_views import ApiHealthView, ApiHealthDbView, ApiHealthAuthView, TrendingTopicsView, SearchPostsView
+from .frontend_views import ApiHealthView, ApiHealthDbView, ApiHealthAuthView, TrendingTopicsView, SearchPostsView, UnifiedSearchView
 from .feature_stub_views import (
     ConversationsView,
     ConversationDetailView,
@@ -103,6 +103,7 @@ urlpatterns = [
     path('v1/trending/topics/', TrendingTopicsView.as_view(), name='trending-topics'),
     path('v1/search/users/', UserSearchView.as_view(), name='search-users'),
     path('v1/search/posts/', SearchPostsView.as_view(), name='search-posts'),
+    path('v1/search/', UnifiedSearchView.as_view(), name='unified-search'),
     
     # Auth endpoints (from users app)
     path('v1/auth/', include('users.urls')),
