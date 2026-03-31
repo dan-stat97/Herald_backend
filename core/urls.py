@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     ProfileViewSet, LikeViewSet, RepostViewSet,
     HashtagViewSet, TransactionViewSet, NewsViewSet,
-    CommunityViewSet, CauseViewSet
+    CommunityViewSet, CauseViewSet, NewsBookmarksView,
 )
 from notifications.views import NotificationViewSet
 from posts.views import PostViewSet
@@ -108,6 +108,9 @@ urlpatterns = [
     # Auth endpoints (from users app)
     path('v1/auth/', include('users.urls')),
     
+    # News bookmarks
+    path('v1/news/bookmarks/me/', NewsBookmarksView.as_view(), name='news-bookmarks-me'),
+
     # Main v1 API endpoints
     path('v1/', include(router_v1.urls)),
 

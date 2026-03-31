@@ -2,6 +2,7 @@
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from rest_framework import viewsets, permissions, status
+from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.contrib.auth.models import User
@@ -163,12 +164,15 @@ class NewsArticleSerializer(serializers.ModelSerializer):
     source_type = serializers.SerializerMethodField()
     external_url = serializers.URLField(source='source_url', allow_null=True, read_only=True)
     published_at = serializers.DateTimeField(source='created_at', read_only=True)
+    is_liked = serializers.SerializerMethodField()
+    is_bookmarked = serializers.SerializerMethodField()
 
     class Meta:
         model = NewsArticle
         fields = [
             'id', 'title', 'summary', 'content', 'source', 'source_type',
             'image_url', 'external_url', 'published_at', 'likes_count', 'category',
+            'is_liked', 'is_bookmarked',
         ]
 
     def get_summary(self, obj):
@@ -177,17 +181,42 @@ class NewsArticleSerializer(serializers.ModelSerializer):
         return None
 
     def get_source(self, obj):
+        cat = (obj.category or '').lower()
+        if 'loveworld' in cat: return 'Loveworld'
+        if 'healing' in cat: return 'Healing School'
+        if 'external' in cat or 'christian' in cat: return 'External'
         return 'Herald Social'
 
     def get_source_type(self, obj):
         cat = (obj.category or '').lower()
-        if 'loveworld' in cat:
-            return 'loveworld'
-        if 'healing' in cat:
-            return 'healing_school'
-        if 'external' in cat or 'christian' in cat:
-            return 'external'
+        if 'loveworld' in cat: return 'loveworld'
+        if 'healing' in cat: return 'healing_school'
+        if 'external' in cat or 'christian' in cat: return 'external'
         return 'herald'
+
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        try:
+            from users.models import User as UserProfile
+            from .models import NewsLike
+            profile = UserProfile.objects.get(user_id=request.user)
+            return NewsLike.objects.filter(article=obj, user=profile).exists()
+        except Exception:
+            return False
+
+    def get_is_bookmarked(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        try:
+            from users.models import User as UserProfile
+            from .models import NewsBookmark
+            profile = UserProfile.objects.get(user_id=request.user)
+            return NewsBookmark.objects.filter(article=obj, user=profile).exists()
+        except Exception:
+            return False
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -202,27 +231,57 @@ class NewsViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = NewsArticle.objects.all().order_by('-created_at')
             category = self.request.query_params.get('category')
             source_type = self.request.query_params.get('source_type')
+            search = self.request.query_params.get('search') or self.request.query_params.get('q')
             sort = self.request.query_params.get('sort') or '-created_at'
 
-            if category:
-                queryset = queryset.filter(category__icontains=category)
+            if search:
+                from django.db.models import Q as DQ
+                queryset = queryset.filter(
+                    DQ(title__icontains=search) | DQ(content__icontains=search)
+                )
 
             if source_type:
                 normalized = source_type.lower()
                 if normalized == 'herald':
-                    queryset = queryset.exclude(category__icontains='loveworld').exclude(category__icontains='external')
+                    queryset = queryset.exclude(category__icontains='loveworld')\
+                                       .exclude(category__icontains='external')\
+                                       .exclude(category__icontains='healing')
                 elif normalized == 'loveworld':
                     queryset = queryset.filter(category__icontains='loveworld')
+                elif normalized == 'healing_school':
+                    queryset = queryset.filter(category__icontains='healing')
                 elif normalized == 'external':
-                    queryset = queryset.filter(category__icontains='external')
+                    from django.db.models import Q
+                    queryset = queryset.filter(
+                        Q(category__icontains='external') | Q(category__icontains='christian')
+                    )
+
+            if category:
+                queryset = queryset.filter(category__icontains=category)
 
             if sort in {'created_at', '-created_at', 'likes_count', '-likes_count'}:
                 queryset = queryset.order_by(sort)
 
             return queryset
         except Exception:
-            # Fallback to old News model if new table doesn't exist yet
-            return News.objects.none()
+            return NewsArticle.objects.none()
+
+
+class NewsBookmarksView(APIView):
+    """GET /news/bookmarks/me/ — return current user's bookmarked news articles."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            from users.models import User as UserProfile
+            from .models import NewsBookmark
+            profile = UserProfile.objects.get(user_id=request.user)
+            bookmarks = NewsBookmark.objects.filter(user=profile).select_related('article').order_by('-created_at')
+            articles = [b.article for b in bookmarks]
+            serializer = NewsArticleSerializer(articles, many=True, context={'request': request})
+            return Response(serializer.data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
