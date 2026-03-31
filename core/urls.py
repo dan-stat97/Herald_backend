@@ -51,6 +51,10 @@ from .feature_stub_views import (
 )
 from .news_interactions import NewsLikeView, NewsBookmarkView
 from communities.joins import CommunityJoinView
+from communities.views import (
+    CommunityListCreateView, CommunityDetailView,
+    CommunityPostsView, CommunityPostLikeView, CommunityMembersView,
+)
 from causes.views import CauseViewSet as CausesViewSet
 from tasks.views import TaskViewSet
 from livestreams.views import LiveStreamViewSet
@@ -75,7 +79,6 @@ router_v1.register(r'reposts', RepostViewSet)
 router_v1.register(r'hashtags', HashtagViewSet)
 router_v1.register(r'transactions', TransactionViewSet)
 router_v1.register(r'news', NewsViewSet, basename='news')
-router_v1.register(r'communities', CommunityViewSet)
 router_v1.register(r'causes', CausesViewSet, basename='cause')
 router_v1.register(r'notifications', NotificationViewSet, basename='notification')
 router_v1.register(r'comments', CommentViewSet, basename='comment')
@@ -169,7 +172,12 @@ urlpatterns = [
     path('v1/users/me/avatar/', AvatarUploadView.as_view(), name='user-avatar'),
     
     # Communities join/leave endpoints  
+    path('v1/communities/', CommunityListCreateView.as_view(), name='community-list-create'),
+    path('v1/communities/<uuid:community_id>/', CommunityDetailView.as_view(), name='community-detail'),
     path('v1/communities/<uuid:community_id>/join/', CommunityJoinView.as_view(), name='community-join'),
+    path('v1/communities/<uuid:community_id>/posts/', CommunityPostsView.as_view(), name='community-posts'),
+    path('v1/communities/<uuid:community_id>/posts/<uuid:post_id>/like/', CommunityPostLikeView.as_view(), name='community-post-like'),
+    path('v1/communities/<uuid:community_id>/members/', CommunityMembersView.as_view(), name='community-members'),
     
     # Admin endpoints
     path('v1/admin/me/role/', AdminRoleView.as_view(), name='admin-role'),
