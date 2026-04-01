@@ -1,12 +1,49 @@
-from rest_framework import views, permissions, status
-from rest_framework.response import Response
+from django.db import IntegrityError
 from django.db.models import Q
+from rest_framework import permissions, status, views
+from rest_framework.response import Response
+
 from .models import Community, CommunityMember, CommunityPost, CommunityPostLike
 from users.models import User
 
 
 def _get_profile(auth_user):
-    return User.objects.get(user_id=auth_user)
+    profile, created = User.objects.get_or_create(
+        user_id=auth_user,
+        defaults={
+            'username': auth_user.username,
+            'display_name': auth_user.first_name or auth_user.username,
+            'full_name': auth_user.get_full_name() or auth_user.username,
+            'email': auth_user.email or '',
+        },
+    )
+
+    updated_fields = []
+    if not profile.username and auth_user.username:
+        profile.username = auth_user.username
+        updated_fields.append('username')
+    if not profile.display_name:
+        profile.display_name = auth_user.first_name or auth_user.username
+        updated_fields.append('display_name')
+    if not profile.full_name:
+        profile.full_name = auth_user.get_full_name() or auth_user.username
+        updated_fields.append('full_name')
+    if not profile.email and auth_user.email:
+        profile.email = auth_user.email
+        updated_fields.append('email')
+
+    if updated_fields:
+        profile.save(update_fields=updated_fields + ['updated_at'])
+
+    return profile
+
+
+def _coerce_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+    return bool(value)
 
 
 def _serialize_community(c, user_community_ids):
@@ -60,17 +97,13 @@ class CommunityListCreateView(views.APIView):
         if search:
             qs = qs.filter(Q(name__icontains=search) | Q(description__icontains=search))
 
-        # Resolve current user profile once
         profile = None
         user_community_ids = set()
         if request.user.is_authenticated:
-            try:
-                profile = _get_profile(request.user)
-                user_community_ids = set(
-                    CommunityMember.objects.filter(user=profile).values_list('community_id', flat=True)
-                )
-            except User.DoesNotExist:
-                pass
+            profile = _get_profile(request.user)
+            user_community_ids = set(
+                CommunityMember.objects.filter(user=profile).values_list('community_id', flat=True)
+            )
 
         if tab == 'joined':
             if profile:
@@ -86,26 +119,31 @@ class CommunityListCreateView(views.APIView):
         return Response(data)
 
     def post(self, request):
-        try:
-            profile = _get_profile(request.user)
-        except User.DoesNotExist:
-            return Response({'error': 'User profile not found'}, status=404)
+        profile = _get_profile(request.user)
 
-        name = request.data.get('name', '').strip()
+        name = (request.data.get('name') or '').strip()
         if not name:
             return Response({'error': 'Name is required'}, status=400)
+        if len(name) > 200:
+            return Response({'error': 'Name must be 200 characters or fewer'}, status=400)
 
-        community = Community.objects.create(
-            name=name,
-            description=request.data.get('description', ''),
-            category=request.data.get('category', 'general'),
-            is_private=request.data.get('is_private', False),
-            image_url=request.data.get('image_url'),
-            created_by=profile,
-            member_count=1,
-        )
-        # Auto-join creator as admin
-        CommunityMember.objects.create(community=community, user=profile, role='admin')
+        try:
+            community = Community.objects.create(
+                name=name,
+                description=(request.data.get('description') or '').strip(),
+                category=(request.data.get('category') or 'general').strip() or 'general',
+                is_private=_coerce_bool(request.data.get('is_private', False)),
+                image_url=(request.data.get('image_url') or None),
+                created_by=profile,
+                member_count=0,
+            )
+            CommunityMember.objects.get_or_create(community=community, user=profile, defaults={'role': 'admin'})
+            community.member_count = community.members.count()
+            community.save(update_fields=['member_count'])
+        except IntegrityError:
+            return Response({'error': 'A community with this configuration already exists or conflicts with existing data.'}, status=409)
+        except Exception as exc:
+            return Response({'error': f'Failed to create community: {exc}'}, status=500)
 
         return Response(_serialize_community(community, {community.id}), status=201)
 
@@ -124,21 +162,19 @@ class CommunityDetailView(views.APIView):
 
         user_community_ids = set()
         if request.user.is_authenticated:
-            try:
-                profile = _get_profile(request.user)
-                if CommunityMember.objects.filter(community=community, user=profile).exists():
-                    user_community_ids.add(community.id)
-            except User.DoesNotExist:
-                pass
+            profile = _get_profile(request.user)
+            if CommunityMember.objects.filter(community=community, user=profile).exists():
+                user_community_ids.add(community.id)
 
         return Response(_serialize_community(community, user_community_ids))
 
     def patch(self, request, community_id):
         try:
             community = Community.objects.get(id=community_id)
-            profile = _get_profile(request.user)
-        except (Community.DoesNotExist, User.DoesNotExist):
+        except Community.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
+
+        profile = _get_profile(request.user)
 
         is_admin = CommunityMember.objects.filter(
             community=community, user=profile, role='admin'
@@ -148,7 +184,10 @@ class CommunityDetailView(views.APIView):
 
         for field in ('name', 'description', 'category', 'image_url', 'is_private'):
             if field in request.data:
-                setattr(community, field, request.data[field])
+                value = request.data[field]
+                if field == 'is_private':
+                    value = _coerce_bool(value)
+                setattr(community, field, value)
         community.save()
 
         return Response(_serialize_community(community, {community.id}))
@@ -170,15 +209,12 @@ class CommunityPostsView(views.APIView):
 
         liked_ids = set()
         if request.user.is_authenticated:
-            try:
-                profile = _get_profile(request.user)
-                liked_ids = set(
-                    CommunityPostLike.objects.filter(
-                        user=profile, post__community=community
-                    ).values_list('post_id', flat=True)
-                )
-            except User.DoesNotExist:
-                pass
+            profile = _get_profile(request.user)
+            liked_ids = set(
+                CommunityPostLike.objects.filter(
+                    user=profile, post__community=community
+                ).values_list('post_id', flat=True)
+            )
 
         return Response([_serialize_post(p, liked_ids) for p in posts])
 
@@ -188,10 +224,7 @@ class CommunityPostsView(views.APIView):
         except Community.DoesNotExist:
             return Response({'error': 'Community not found'}, status=404)
 
-        try:
-            profile = _get_profile(request.user)
-        except User.DoesNotExist:
-            return Response({'error': 'User profile not found'}, status=404)
+        profile = _get_profile(request.user)
 
         if not CommunityMember.objects.filter(community=community, user=profile).exists():
             return Response({'error': 'You must be a member to post'}, status=403)
@@ -216,9 +249,10 @@ class CommunityPostLikeView(views.APIView):
     def post(self, request, community_id, post_id):
         try:
             post = CommunityPost.objects.get(id=post_id, community_id=community_id)
-            profile = _get_profile(request.user)
-        except (CommunityPost.DoesNotExist, User.DoesNotExist):
+        except CommunityPost.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
+
+        profile = _get_profile(request.user)
 
         _, created = CommunityPostLike.objects.get_or_create(post=post, user=profile)
         if created:
@@ -229,9 +263,10 @@ class CommunityPostLikeView(views.APIView):
     def delete(self, request, community_id, post_id):
         try:
             post = CommunityPost.objects.get(id=post_id, community_id=community_id)
-            profile = _get_profile(request.user)
-        except (CommunityPost.DoesNotExist, User.DoesNotExist):
+        except CommunityPost.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
+
+        profile = _get_profile(request.user)
 
         CommunityPostLike.objects.filter(post=post, user=profile).delete()
         post.likes_count = post.likes.count()
