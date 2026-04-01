@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from .models import User as UserProfile
 from posts.models import Comment
 
+
 class UserSignupSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
@@ -10,24 +11,27 @@ class UserSignupSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=200)
     display_name = serializers.CharField(max_length=200, required=False, allow_blank=True)
 
+
 class UserProfileSerializer(serializers.ModelSerializer):
     email = serializers.SerializerMethodField()
     followers_count = serializers.SerializerMethodField()
     following_count = serializers.SerializerMethodField()
+
     class Meta:
         model = UserProfile
         fields = [
             'id', 'user_id', 'username', 'display_name', 'full_name', 'email', 'avatar_url', 'bio',
             'followers_count', 'following_count',
             'notifications_enabled', 'privacy_level', 'email_updates', 'interests', 'onboarding_completed',
-            'tier', 'reputation', 'is_verified', 'is_creator', 'created_at', 'updated_at'
+            'tier', 'reputation', 'is_verified', 'is_creator', 'auth_provider',
+            'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'user_id', 'reputation', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'user_id', 'reputation', 'auth_provider', 'created_at', 'updated_at']
 
     def get_email(self, obj):
         try:
             return obj.user_id.email if obj.user_id else obj.email
-        except:
+        except Exception:
             return obj.email
 
     def get_followers_count(self, obj):
