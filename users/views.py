@@ -79,8 +79,18 @@ def kingschat_request(url, method='GET', payload=None, headers=None):
 
     try:
         with urllib_request.urlopen(req, timeout=20) as response:
-            raw = response.read().decode('utf-8')
-            return json.loads(raw) if raw else {}
+            raw = response.read().decode('utf-8', errors='ignore')
+            if not raw:
+                return {}
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                snippet = re.sub(r'<[^>]+>', ' ', raw).strip()
+                snippet = re.sub(r'\s+', ' ', snippet)[:200]
+                raise KingsChatAuthError(
+                    f'KingsChat returned a non-JSON response: {snippet or "empty response"}',
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                )
     except urllib_error.HTTPError as exc:
         raw = exc.read().decode('utf-8', errors='ignore')
         payload = {}
