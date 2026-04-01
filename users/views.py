@@ -3,6 +3,7 @@ import os
 import re
 from urllib import error as urllib_error
 from urllib import request as urllib_request
+from urllib.parse import parse_qs
 
 from django.contrib.auth import authenticate, logout
 from django.contrib.auth import get_user_model
@@ -384,14 +385,62 @@ class KingsChatAuthView(views.APIView):
 class KingsChatCallbackView(views.APIView):
     permission_classes = [permissions.AllowAny]
 
+    def _collect_incoming(self, request):
+        sources = [request.GET]
+        if request.method != 'GET':
+            try:
+                if request.data:
+                    sources.append(request.data)
+            except Exception:
+                pass
+            if request.POST:
+                sources.append(request.POST)
+            raw_body = request.body.decode('utf-8', errors='ignore') if request.body else ''
+            if raw_body:
+                try:
+                    parsed_json = json.loads(raw_body)
+                    if isinstance(parsed_json, dict):
+                        sources.append(parsed_json)
+                except json.JSONDecodeError:
+                    pass
+                parsed_form = {
+                    key: values[-1] if isinstance(values, list) and values else values
+                    for key, values in parse_qs(raw_body, keep_blank_values=True).items()
+                }
+                if parsed_form:
+                    sources.append(parsed_form)
+        return sources
+
     def _render_bridge(self, request):
-        incoming = request.GET if request.method == 'GET' else request.data
-        app_redirect_uri = incoming.get('app_redirect_uri') or request.GET.get('app_redirect_uri') or 'heraldsocial://auth/kingschat'
+        sources = self._collect_incoming(request)
+
+        def read(key):
+            for source in sources:
+                try:
+                    value = source.get(key)
+                except Exception:
+                    value = None
+                if value:
+                    return value
+            return None
+
+        app_redirect_uri = read('app_redirect_uri') or 'heraldsocial://auth/kingschat'
         payload = {}
-        for key in ('code', 'access_token', 'refresh_token', 'expires_in_millis', 'error', 'error_description', 'state'):
-            value = incoming.get(key)
-            if value:
-                payload[key] = value
+        aliases = {
+            'code': ('code',),
+            'access_token': ('access_token', 'accessToken'),
+            'refresh_token': ('refresh_token', 'refreshToken'),
+            'expires_in_millis': ('expires_in_millis', 'expiresInMillis'),
+            'error': ('error',),
+            'error_description': ('error_description', 'errorDescription'),
+            'state': ('state',),
+        }
+        for target_key, keys in aliases.items():
+            for key in keys:
+                value = read(key)
+                if value:
+                    payload[target_key] = value
+                    break
         html = f"""
 <!DOCTYPE html>
 <html lang=\"en\">
@@ -591,6 +640,7 @@ class CurrentUserView(views.APIView):
     def get(self, request):
         profile = ensure_user_profile(request.user)
         return Response(UserProfileSerializer(profile).data)
+
 
 
 
