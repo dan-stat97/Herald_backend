@@ -6,6 +6,7 @@ from urllib import request as urllib_request
 
 from django.contrib.auth import authenticate, logout
 from django.contrib.auth import get_user_model
+from django.http import HttpResponse
 from rest_framework import generics, permissions, status, viewsets, views
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -379,6 +380,56 @@ class KingsChatAuthView(views.APIView):
         })
 
 
+
+class KingsChatCallbackView(views.APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        app_redirect_uri = request.GET.get('app_redirect_uri') or 'heraldsocial://auth/kingschat'
+        html = f"""
+<!DOCTYPE html>
+<html lang=\"en\">
+  <head>
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <title>Finishing KingsChat sign in</title>
+    <style>
+      body {{ background:#0a0a0a; color:#f0f0f0; font-family:Arial,sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }}
+      .card {{ max-width:420px; padding:24px; border:1px solid #1f1f1f; border-radius:20px; background:#111111; text-align:center; }}
+      h1 {{ font-size:22px; margin:0 0 12px; }}
+      p {{ color:#9ca3af; line-height:1.5; }}
+      a {{ display:inline-block; margin-top:16px; color:#d4a847; text-decoration:none; font-weight:700; }}
+    </style>
+  </head>
+  <body>
+    <div class=\"card\">
+      <h1>Finishing KingsChat sign in</h1>
+      <p>If Herald does not reopen automatically, tap the button below.</p>
+      <a id=\"continueLink\" href=\"#\">Open Herald Social</a>
+    </div>
+    <script>
+      (function () {{
+        var appRedirectUri = {json.dumps(app_redirect_uri)};
+        var searchParams = new URLSearchParams(window.location.search);
+        var hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        hashParams.forEach(function(value, key) {{
+          if (!searchParams.has(key)) searchParams.set(key, value);
+        }});
+        searchParams.delete('app_redirect_uri');
+        var target = new URL(appRedirectUri);
+        searchParams.forEach(function(value, key) {{
+          target.searchParams.set(key, value);
+        }});
+        var href = target.toString();
+        document.getElementById('continueLink').setAttribute('href', href);
+        window.location.replace(href);
+      }})();
+    </script>
+  </body>
+</html>
+"""
+        return HttpResponse(html)
+
 class SignoutView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -522,4 +573,5 @@ class CurrentUserView(views.APIView):
     def get(self, request):
         profile = ensure_user_profile(request.user)
         return Response(UserProfileSerializer(profile).data)
+
 

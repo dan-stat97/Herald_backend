@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     SignupView, SigninView, SignoutView, RefreshView, CurrentUserView,
     UserProfileViewSet, SessionView, ChangePasswordView, UserPostsView, UserTasksView,
-    KingsChatAuthView,
+    KingsChatAuthView, KingsChatCallbackView,
 )
 from .extra_views import UserTaskClaimMeView
 
@@ -17,6 +17,7 @@ urlpatterns = [
     path('signout/', SignoutView.as_view(), name='auth-signout'),
     path('refresh/', RefreshView.as_view(), name='auth-refresh'),
     path('kingschat/', KingsChatAuthView.as_view(), name='auth-kingschat'),
+    path('kingschat/callback/', KingsChatCallbackView.as_view(), name='auth-kingschat-callback'),
     path('user/', CurrentUserView.as_view(), name='auth-user'),
     path('session/', SessionView.as_view(), name='auth-session'),
     path('change-password/', ChangePasswordView.as_view(), name='auth-change-password'),
@@ -28,3 +29,4 @@ urlpatterns = [
 
     path('users/', include(router.urls)),
 ]
+
