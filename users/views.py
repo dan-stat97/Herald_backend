@@ -3,7 +3,6 @@ import os
 import re
 from urllib import error as urllib_error
 from urllib import request as urllib_request
-from urllib.parse import parse_qs
 
 from django.contrib.auth import authenticate, logout
 from django.contrib.auth import get_user_model
@@ -395,20 +394,6 @@ class KingsChatCallbackView(views.APIView):
                 pass
             if request.POST:
                 sources.append(request.POST)
-            raw_body = request.body.decode('utf-8', errors='ignore') if request.body else ''
-            if raw_body:
-                try:
-                    parsed_json = json.loads(raw_body)
-                    if isinstance(parsed_json, dict):
-                        sources.append(parsed_json)
-                except json.JSONDecodeError:
-                    pass
-                parsed_form = {
-                    key: values[-1] if isinstance(values, list) and values else values
-                    for key, values in parse_qs(raw_body, keep_blank_values=True).items()
-                }
-                if parsed_form:
-                    sources.append(parsed_form)
         return sources
 
     def _render_bridge(self, request):
@@ -640,6 +625,7 @@ class CurrentUserView(views.APIView):
     def get(self, request):
         profile = ensure_user_profile(request.user)
         return Response(UserProfileSerializer(profile).data)
+
 
 
 
