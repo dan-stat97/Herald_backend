@@ -384,8 +384,14 @@ class KingsChatAuthView(views.APIView):
 class KingsChatCallbackView(views.APIView):
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request):
-        app_redirect_uri = request.GET.get('app_redirect_uri') or 'heraldsocial://auth/kingschat'
+    def _render_bridge(self, request):
+        incoming = request.GET if request.method == 'GET' else request.data
+        app_redirect_uri = incoming.get('app_redirect_uri') or request.GET.get('app_redirect_uri') or 'heraldsocial://auth/kingschat'
+        payload = {}
+        for key in ('code', 'access_token', 'refresh_token', 'expires_in_millis', 'error', 'error_description', 'state'):
+            value = incoming.get(key)
+            if value:
+                payload[key] = value
         html = f"""
 <!DOCTYPE html>
 <html lang=\"en\">
@@ -410,15 +416,21 @@ class KingsChatCallbackView(views.APIView):
     <script>
       (function () {{
         var appRedirectUri = {json.dumps(app_redirect_uri)};
+        var target = new URL(appRedirectUri);
+        var payload = {json.dumps(payload)};
+        Object.keys(payload).forEach(function(key) {{
+          target.searchParams.set(key, payload[key]);
+        }});
         var searchParams = new URLSearchParams(window.location.search);
         var hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
         hashParams.forEach(function(value, key) {{
           if (!searchParams.has(key)) searchParams.set(key, value);
         }});
         searchParams.delete('app_redirect_uri');
-        var target = new URL(appRedirectUri);
         searchParams.forEach(function(value, key) {{
-          target.searchParams.set(key, value);
+          if (!target.searchParams.has(key)) {{
+            target.searchParams.set(key, value);
+          }}
         }});
         var href = target.toString();
         document.getElementById('continueLink').setAttribute('href', href);
@@ -429,6 +441,12 @@ class KingsChatCallbackView(views.APIView):
 </html>
 """
         return HttpResponse(html)
+
+    def get(self, request):
+        return self._render_bridge(request)
+
+    def post(self, request):
+        return self._render_bridge(request)
 
 class SignoutView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -573,5 +591,6 @@ class CurrentUserView(views.APIView):
     def get(self, request):
         profile = ensure_user_profile(request.user)
         return Response(UserProfileSerializer(profile).data)
+
 
 
