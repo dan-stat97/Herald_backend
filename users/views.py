@@ -6,6 +6,7 @@ from urllib import request as urllib_request
 
 from django.contrib.auth import authenticate, logout
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError
 from django.http import HttpResponse
 from rest_framework import generics, permissions, status, viewsets, views
 from rest_framework.decorators import action
@@ -33,7 +34,7 @@ def ensure_user_profile(auth_user):
     profile, created = UserProfile.objects.get_or_create(
         user_id=auth_user,
         defaults={
-            'username': auth_user.username,
+            'username': build_unique_username(auth_user.username, auth_user_pk=auth_user.pk),
             'display_name': auth_user.first_name or auth_user.username,
             'full_name': auth_user.get_full_name() or auth_user.username,
             'email': auth_user.email or '',
@@ -42,7 +43,7 @@ def ensure_user_profile(auth_user):
 
     updated_fields = []
     if not profile.username and auth_user.username:
-        profile.username = auth_user.username
+        profile.username = build_unique_username(auth_user.username, auth_user_pk=auth_user.pk, profile_pk=profile.pk)
         updated_fields.append('username')
     if not profile.display_name:
         profile.display_name = auth_user.first_name or auth_user.username
@@ -115,7 +116,19 @@ def parse_kingschat_name(name):
     return parts[0], parts[1] if len(parts) > 1 else ''
 
 
-def build_unique_username(seed):
+def username_is_taken(candidate, auth_user_pk=None, profile_pk=None):
+    auth_taken = AuthUser.objects.filter(username=candidate)
+    if auth_user_pk is not None:
+        auth_taken = auth_taken.exclude(pk=auth_user_pk)
+
+    profile_taken = UserProfile.objects.filter(username=candidate)
+    if profile_pk is not None:
+        profile_taken = profile_taken.exclude(pk=profile_pk)
+
+    return auth_taken.exists() or profile_taken.exists()
+
+
+def build_unique_username(seed, auth_user_pk=None, profile_pk=None):
     base = KINGSCHAT_USERNAME_RE.sub('', (seed or '').lower())
     base = base[:24] if base else 'kingschatuser'
     if len(base) < 3:
@@ -123,7 +136,7 @@ def build_unique_username(seed):
 
     candidate = base
     suffix = 1
-    while AuthUser.objects.filter(username=candidate).exists():
+    while username_is_taken(candidate, auth_user_pk=auth_user_pk, profile_pk=profile_pk):
         candidate = f'{base[:20]}{suffix}'
         suffix += 1
     return candidate
@@ -159,13 +172,18 @@ def find_or_create_kingschat_user(profile_payload):
     profile = ensure_user_profile(auth_user)
     updates = []
 
-    mapped_username = build_unique_username(username_seed) if profile.username != auth_user.username and AuthUser.objects.filter(username=profile.username).exclude(pk=auth_user.pk).exists() else (profile_payload.get('username') or auth_user.username)
+    desired_username = (profile_payload.get('username') or profile.username or auth_user.username)[:100]
+    mapped_username = build_unique_username(
+        desired_username,
+        auth_user_pk=auth_user.pk,
+        profile_pk=profile.pk,
+    )
     if mapped_username and profile.username != mapped_username:
-        profile.username = mapped_username[:100]
+        profile.username = mapped_username
         updates.append('username')
-        if auth_user.username != profile.username and not AuthUser.objects.filter(username=profile.username).exclude(pk=auth_user.pk).exists():
-            auth_user.username = profile.username
-            auth_user.save(update_fields=['username'])
+    if auth_user.username != mapped_username:
+        auth_user.username = mapped_username
+        auth_user.save(update_fields=['username'])
 
     full_name = (profile_payload.get('name') or profile.full_name or auth_user.get_full_name() or profile.username).strip()
     display_name = (profile_payload.get('name') or profile.display_name or profile.username).strip()
@@ -376,6 +394,10 @@ class KingsChatAuthView(views.APIView):
             user, profile = find_or_create_kingschat_user(kingschat_profile)
         except KingsChatAuthError as exc:
             return Response({'error': str(exc)}, status=exc.status_code)
+        except IntegrityError:
+            return Response({'error': 'Could not finish KingsChat sign in because this account conflicts with an existing Herald profile.'}, status=status.HTTP_409_CONFLICT)
+        except Exception:
+            return Response({'error': 'KingsChat sign in failed on the server. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         refresh = RefreshToken.for_user(user)
         return Response({
