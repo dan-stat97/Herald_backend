@@ -182,7 +182,27 @@ class MediaUploadView(APIView):
 
         try:
             resource_type = 'image' if is_image else 'video'
-            folder = f'herald/posts/{resource_type}s'
+
+            # Map upload context → Cloudinary folder so every asset type
+            # lands in its own organised directory under herald/.
+            context = (request.data.get('context') or request.query_params.get('context') or 'post').strip()
+
+            FOLDER_MAP = {
+                # Feed posts
+                'post':               f'heraldsocial/posts/{resource_type}s',
+                # Community posts
+                'community_post':     f'heraldsocial/communities/posts/{resource_type}s',
+                # Community banner / cover image
+                'community_banner':   'heraldsocial/communities/banners',
+                # News article images
+                'news':               'heraldsocial/news/images',
+                # Cause cover images
+                'cause':              'heraldsocial/causes/images',
+                # User profile cover photos
+                'profile_cover':      'heraldsocial/profiles/covers',
+            }
+
+            folder = FOLDER_MAP.get(context, f'heraldsocial/posts/{resource_type}s')
 
             result = cloudinary.uploader.upload(
                 media,
@@ -197,10 +217,12 @@ class MediaUploadView(APIView):
                 {
                     'url': result['secure_url'],
                     'public_id': result['public_id'],
+                    'folder': folder,
                     'name': media.name,
                     'size': media.size,
                     'content_type': content_type,
                     'resource_type': resource_type,
+                    'media_type': resource_type,
                 },
                 status=status.HTTP_201_CREATED,
             )

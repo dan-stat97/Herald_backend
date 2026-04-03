@@ -48,7 +48,7 @@ class AvatarUploadView(views.APIView):
                 # Upload to Cloudinary with face-cropping to a 400×400 thumbnail
                 result = cloudinary.uploader.upload(
                     avatar_file,
-                    folder='herald/avatars',
+                    folder='heraldsocial/avatars',
                     public_id=f'user_{request.user.id}',
                     overwrite=True,
                     resource_type='image',

@@ -9,6 +9,7 @@ class Community(models.Model):
 	category = models.CharField(max_length=50, default='general')
 	created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_communities')
 	image_url = models.URLField(null=True, blank=True)
+	rules = models.JSONField(default=list, blank=True)
 	is_private = models.BooleanField(default=False)
 	member_count = models.IntegerField(default=0)
 	created_at = models.DateTimeField(auto_now_add=True)
