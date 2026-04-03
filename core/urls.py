@@ -50,6 +50,7 @@ from .feature_stub_views import (
     AiContentInsightsView,
 )
 from .news_interactions import NewsLikeView, NewsBookmarkView
+from .news_clusters import NewsClustersView, NewsArticleContextView
 from communities.joins import CommunityJoinView
 from communities.views import (
     CommunityListCreateView, CommunityDetailView,
@@ -108,6 +109,10 @@ urlpatterns = [
     # Auth endpoints (from users app)
     path('v1/auth/', include('users.urls')),
     
+    # X-style clustered news feed
+    path('v1/news/clusters/', NewsClustersView.as_view(), name='news-clusters'),
+    path('v1/news/<uuid:article_id>/context/', NewsArticleContextView.as_view(), name='news-context'),
+
     # News bookmarks
     path('v1/news/bookmarks/me/', NewsBookmarksView.as_view(), name='news-bookmarks-me'),
 
@@ -242,3 +247,4 @@ urlpatterns = [
     path('v1/streams/<uuid:stream_id>/viewer-join/', StreamViewerJoinLeaveView.as_view(), name='stream-viewer-join'),
     path('v1/streams/<uuid:stream_id>/viewer-leave/', StreamViewerJoinLeaveView.as_view(), name='stream-viewer-leave'),
 ]
+
