@@ -234,7 +234,7 @@ STORY_PACKETS = [
                 "A free online Bible college has opened theological training to thousands of learners across regions that would not "
                 "normally have easy access to structured ministry education. Leaders say this kind of access can accelerate discipleship and outreach."
             ),
-            "category": "education bible college ministry training evangelism",
+            "category": "education bible_college evangelism",
             "image_url": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800",
             "source_url": "https://heraldsocial.app/news/online-bible-college",
             "likes_count": 126,
