@@ -145,10 +145,12 @@ def build_unique_username(seed, auth_user_pk=None, profile_pk=None):
 def find_or_create_kingschat_user(profile_payload):
     kingschat_id = str(profile_payload.get('id') or '').strip()
     email = (profile_payload.get('email') or '').strip().lower()
-    username_seed = profile_payload.get('username') or profile_payload.get('name') or email.split('@')[0] or 'kingschatuser'
+    requested_kingschat_username = (profile_payload.get('username') or '').strip()
+    username_seed = requested_kingschat_username or profile_payload.get('name') or email.split('@')[0] or 'kingschatuser'
 
     profile = None
     auth_user = None
+    created_new_account = False
 
     if kingschat_id:
         profile = UserProfile.objects.filter(kingschat_id=kingschat_id).select_related('user_id').first()
@@ -160,35 +162,39 @@ def find_or_create_kingschat_user(profile_payload):
 
     if auth_user is None:
         first_name, last_name = parse_kingschat_name(profile_payload.get('name'))
+        generated_username = build_unique_username(username_seed)
         auth_user = AuthUser.objects.create(
-            username=build_unique_username(username_seed),
+            username=generated_username,
             email=email,
             first_name=first_name,
             last_name=last_name,
         )
         auth_user.set_unusable_password()
         auth_user.save(update_fields=['password'])
+        created_new_account = True
 
     profile = ensure_user_profile(auth_user)
     updates = []
 
-    desired_username = (profile_payload.get('username') or profile.username or auth_user.username)[:100]
-    mapped_username = build_unique_username(
-        desired_username,
-        auth_user_pk=auth_user.pk,
-        profile_pk=profile.pk,
-    )
-    if mapped_username and profile.username != mapped_username:
-        profile.username = mapped_username
+    # Best practice: provider usernames are metadata, not identity.
+    # We only use the KingsChat username to seed a brand-new Herald handle.
+    # For an existing Herald account, keep the local username stable.
+    if created_new_account and not profile.username:
+        generated_username = build_unique_username(
+            username_seed,
+            auth_user_pk=auth_user.pk,
+            profile_pk=profile.pk,
+        )
+        profile.username = generated_username
         updates.append('username')
-    if auth_user.username != mapped_username:
-        auth_user.username = mapped_username
-        auth_user.save(update_fields=['username'])
+        if auth_user.username != generated_username:
+            auth_user.username = generated_username
+            auth_user.save(update_fields=['username'])
 
     full_name = (profile_payload.get('name') or profile.full_name or auth_user.get_full_name() or profile.username).strip()
     display_name = (profile_payload.get('name') or profile.display_name or profile.username).strip()
     avatar_url = profile_payload.get('avatar') or profile.avatar_url
-    kingschat_username = profile_payload.get('username') or profile.kingschat_username
+    kingschat_username = requested_kingschat_username or profile.kingschat_username
 
     if display_name and profile.display_name != display_name:
         profile.display_name = display_name[:200]
@@ -219,7 +225,11 @@ def find_or_create_kingschat_user(profile_payload):
         profile.save(update_fields=list(dict.fromkeys(updates + ['updated_at'])))
 
     create_wallet_if_missing(profile)
-    return auth_user, profile
+    return auth_user, profile, {
+        'created_new_account': created_new_account,
+        'kingschat_username': requested_kingschat_username or None,
+        'username_was_auto_generated': bool(requested_kingschat_username and profile.username != requested_kingschat_username),
+    }
 
 
 def fetch_kingschat_profile(code=None, access_token=None):
@@ -391,7 +401,7 @@ class KingsChatAuthView(views.APIView):
 
         try:
             kingschat_profile = fetch_kingschat_profile(code=code, access_token=access_token)
-            user, profile = find_or_create_kingschat_user(kingschat_profile)
+            user, profile, kingschat_meta = find_or_create_kingschat_user(kingschat_profile)
         except KingsChatAuthError as exc:
             return Response({'error': str(exc)}, status=exc.status_code)
         except IntegrityError:
@@ -409,6 +419,7 @@ class KingsChatAuthView(views.APIView):
             },
             'refresh': str(refresh),
             'provider': 'kingschat',
+            'kingschat': kingschat_meta,
         })
 
 
