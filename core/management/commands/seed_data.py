@@ -1,13 +1,18 @@
 """
 Management command: seed_data
 
-Seeds official Herald newsroom-style users, posts, and news articles so the
-X-like clustered news page has real data to work with.
+Seeds realistic official Herald content across:
+- users and wallets
+- feed posts and clustered news
+- communities and community posts
+- causes and donations
+- store products
 
 The command is intentionally idempotent:
 - users are created once and then reused
 - posts are keyed by (author, content)
 - articles are keyed by title
+- communities, causes, and products are keyed by name/title
 
 Usage:
     python manage.py seed_data
@@ -17,15 +22,20 @@ Usage:
 """
 
 from datetime import timedelta
+from decimal import Decimal
 import random
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from causes.models import Cause, Donation
+from communities.models import Community, CommunityMember, CommunityPost
 from core.models import NewsArticle
+from estore.models import Product
 from posts.models import Post
 from users.models import User as UserProfile
+from wallets.models import Wallet
 
 AuthUser = get_user_model()
 
@@ -93,6 +103,181 @@ OFFICIAL_USERS = [
         "bio": "Official Herald sports desk covering major moments, resilience stories, and what people are talking about now.",
         "tier": "creator",
         "is_verified": True,
+    },
+]
+
+USER_METRICS = {
+    "heraldnews": {"reputation": 4820, "httn_points": 17600, "espees": "32000.00"},
+    "heraldworlddesk": {"reputation": 5380, "httn_points": 22150, "espees": "41500.00"},
+    "heraldprayerdesk": {"reputation": 4965, "httn_points": 19440, "espees": "36100.00"},
+    "heraldworship": {"reputation": 4540, "httn_points": 18330, "espees": "28750.00"},
+    "heraldtoday": {"reputation": 4710, "httn_points": 20120, "espees": "34890.00"},
+    "heraldsports": {"reputation": 4295, "httn_points": 16880, "espees": "25110.00"},
+}
+
+STORE_PRODUCTS = [
+    {
+        "name": "World Evangelism Starter Pack",
+        "description": "Campaign graphics, caption packs, and outreach templates for digital evangelism teams.",
+        "category": "tools",
+        "price": "1250.00",
+        "image_url": "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800",
+    },
+    {
+        "name": "Prayer Room Access Pass",
+        "description": "Monthly subscription to premium prayer rooms, guided sessions, and live devotional archives.",
+        "category": "subscriptions",
+        "price": "850.00",
+        "image_url": "https://images.unsplash.com/photo-1508672019048-805c876b67e2?w=800",
+    },
+    {
+        "name": "Herald World Evangelism Tee",
+        "description": "Soft-touch premium tee celebrating missions, prayer, and global soul winning.",
+        "category": "merchandise",
+        "price": "2200.00",
+        "image_url": "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800",
+    },
+    {
+        "name": "Praise Night Collectible Poster NFT",
+        "description": "Limited Herald Worship digital collectible from the latest live worship night.",
+        "category": "nfts",
+        "price": "3100.00",
+        "image_url": "https://images.unsplash.com/photo-1633419461186-7d40a38105ec?w=800",
+    },
+    {
+        "name": "Community Builder Toolkit",
+        "description": "Moderation checklists, onboarding copies, and engagement prompts for community admins.",
+        "category": "tools",
+        "price": "1450.00",
+        "image_url": "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800",
+    },
+    {
+        "name": "Herald Gold Supporter Subscription",
+        "description": "Creator support perks, member badges, and deeper access to Herald live sessions.",
+        "category": "subscriptions",
+        "price": "1800.00",
+        "image_url": "https://images.unsplash.com/photo-1515169067868-5387ec356754?w=800",
+    },
+]
+
+COMMUNITY_PACKETS = [
+    {
+        "name": "World Evangelism Hub",
+        "description": "Daily ideas, testimonies, and prayer points for believers focused on reaching the world with the Gospel.",
+        "category": "missions",
+        "image_url": "https://images.unsplash.com/photo-1509099836639-18ba1795216d?w=800",
+        "rules": [
+            "Keep every conversation Christ-centered and mission-minded.",
+            "Share testimonies and outreach ideas that can strengthen others.",
+            "Respect all members and avoid arguments that distract from the Gospel.",
+        ],
+        "created_by": "heraldworlddesk",
+        "members": ["heraldworlddesk", "heraldnews", "heraldprayerdesk", "heraldtoday"],
+        "posts": [
+            ("heraldworlddesk", "This week we are focusing on campus outreach and digital follow-up systems that actually retain new converts. #worldevangelism #missions"),
+            ("heraldnews", "One thing the strongest outreach teams have in common is consistency. Daily obedience scales farther than occasional hype. #evangelism #discipleship"),
+        ],
+    },
+    {
+        "name": "Prayer & Revival Watch",
+        "description": "A community for prayer burdens, revival updates, and focused intercession across nations.",
+        "category": "prayer",
+        "image_url": "https://images.unsplash.com/photo-1529070538774-1843cb3265df?w=800",
+        "rules": [
+            "Protect the privacy of prayer requests.",
+            "Encourage, don’t shame, people who are trusting God.",
+            "Use this space to build faith and agreement.",
+        ],
+        "created_by": "heraldprayerdesk",
+        "members": ["heraldprayerdesk", "heraldworlddesk", "heraldworship", "heraldtoday"],
+        "posts": [
+            ("heraldprayerdesk", "Tonight’s prayer focus is boldness for soul winning, strength for church leaders, and open doors for the Gospel. #prayer #revival"),
+            ("heraldtoday", "National headlines can shift quickly, but prayer keeps believers anchored and effective. #faith #intercession"),
+        ],
+    },
+    {
+        "name": "Worship Leaders Circle",
+        "description": "Songs, setlists, and conversations for worship teams building strong moments of encounter.",
+        "category": "worship",
+        "image_url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800",
+        "rules": [
+            "Share resources that help churches serve better.",
+            "Credit songwriters and teams when posting material.",
+            "Keep feedback constructive and kind.",
+        ],
+        "created_by": "heraldworship",
+        "members": ["heraldworship", "heraldnews", "heraldsports"],
+        "posts": [
+            ("heraldworship", "Curating worship is not just about songs, it is about where you are leading people spiritually. #worship #music"),
+            ("heraldsports", "Amazing how worship rhythms and locker-room discipline both reward consistency. #worship #discipline"),
+        ],
+    },
+    {
+        "name": "Creators & Culture Lab",
+        "description": "For Christian creators shaping media, conversation, and culture with excellence.",
+        "category": "creators",
+        "image_url": "https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=800",
+        "rules": [
+            "Post ideas that move creativity forward.",
+            "Keep critique useful and actionable.",
+            "Build culture, don’t just comment on it.",
+        ],
+        "created_by": "heraldtoday",
+        "members": ["heraldtoday", "heraldnews", "heraldworlddesk", "heraldworship", "heraldsports"],
+        "posts": [
+            ("heraldtoday", "Christian creators need both conviction and craft. One without the other will not sustain influence. #creators #culture"),
+            ("heraldnews", "The content that lasts usually comes from real clarity, not trend chasing. #media #storytelling"),
+        ],
+    },
+]
+
+CAUSE_PACKETS = [
+    {
+        "title": "Sponsor World Evangelism Outreach Materials",
+        "description": "Help fund digital and print materials for evangelism teams reaching campuses and local communities across Africa.",
+        "category": "outreach",
+        "goal_amount": "250000.00",
+        "raised_amount": "154500.00",
+        "status": "active",
+        "image_url": "https://images.unsplash.com/photo-1509099836639-18ba1795216d?w=800",
+        "created_by": "heraldworlddesk",
+        "end_days": 24,
+        "donations": [
+            ("heraldnews", "15000.00", "Praying this reaches many lives."),
+            ("heraldprayerdesk", "22500.00", "For souls and lasting discipleship."),
+            ("heraldtoday", "18000.00", "Glad to support this move."),
+        ],
+    },
+    {
+        "title": "Equip Healing School Volunteers",
+        "description": "Raise support for volunteer kits, logistics, and follow-up care materials for healing outreaches.",
+        "category": "healing_school",
+        "goal_amount": "180000.00",
+        "raised_amount": "98000.00",
+        "status": "active",
+        "image_url": "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800",
+        "created_by": "heraldprayerdesk",
+        "end_days": 18,
+        "donations": [
+            ("heraldworlddesk", "12000.00", "Believing for miracles and testimonies."),
+            ("heraldworship", "9000.00", "Standing with this vision."),
+        ],
+    },
+    {
+        "title": "Bible Study Resources for Youth Communities",
+        "description": "Provide study guides, discipleship packs, and follow-up tools for youth fellowships.",
+        "category": "education",
+        "goal_amount": "95000.00",
+        "raised_amount": "95000.00",
+        "status": "completed",
+        "image_url": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800",
+        "created_by": "heraldnews",
+        "end_days": -3,
+        "donations": [
+            ("heraldtoday", "10000.00", "This will go far."),
+            ("heraldsports", "8000.00", "Happy to back the next generation."),
+            ("heraldworship", "12000.00", "For growth and depth."),
+        ],
     },
 ]
 
@@ -334,12 +519,22 @@ class Command(BaseCommand):
             self._clear_seeded_data()
 
         profiles = self._create_users()
+        self._seed_wallets(profiles)
         created_posts = 0 if options["skip_posts"] else self._create_posts(profiles, rng)
         created_news = 0 if options["skip_news"] else self._create_news(rng)
+        created_products = self._create_products()
+        created_communities = self._create_communities(profiles, rng)
+        created_causes = self._create_causes(profiles)
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Seed complete: {len(profiles)} official users ready, {created_posts} posts created, {created_news} news articles created."
+                "Seed complete: "
+                f"{len(profiles)} official users ready, "
+                f"{created_posts} posts created, "
+                f"{created_news} news articles created, "
+                f"{created_products} products created, "
+                f"{created_communities} communities created, "
+                f"{created_causes} causes created."
             )
         )
 
@@ -411,6 +606,28 @@ class Command(BaseCommand):
 
         return profiles
 
+    def _seed_wallets(self, profiles):
+        for username, profile in profiles.items():
+            metrics = USER_METRICS.get(username, {})
+            reputation = metrics.get("reputation", 0)
+            if profile.reputation != reputation:
+                profile.reputation = reputation
+                profile.save(update_fields=["reputation"])
+
+            wallet, _ = Wallet.objects.get_or_create(user_id=profile)
+            updates = []
+            httn_points = metrics.get("httn_points", 0)
+            espees = Decimal(metrics.get("espees", "0"))
+
+            if wallet.httn_points != httn_points:
+                wallet.httn_points = httn_points
+                updates.append("httn_points")
+            if wallet.espees != espees:
+                wallet.espees = espees
+                updates.append("espees")
+            if updates:
+                wallet.save(update_fields=updates + ["updated_at"])
+
     def _create_posts(self, profiles, rng):
         created_count = 0
         now = timezone.now()
@@ -463,15 +680,166 @@ class Command(BaseCommand):
         self.stdout.write(f"  Created {created_count} official Herald news articles")
         return created_count
 
+    def _create_products(self):
+        created_count = 0
+        for spec in STORE_PRODUCTS:
+            _, created = Product.objects.get_or_create(
+                name=spec["name"],
+                defaults={
+                    "description": spec["description"],
+                    "category": spec["category"],
+                    "price": Decimal(spec["price"]),
+                    "image_url": spec["image_url"],
+                },
+            )
+            if created:
+                created_count += 1
+        self.stdout.write(f"  Created {created_count} store products")
+        return created_count
+
+    def _create_communities(self, profiles, rng):
+        created_count = 0
+        now = timezone.now()
+
+        for packet_index, packet in enumerate(COMMUNITY_PACKETS):
+            community, created = Community.objects.get_or_create(
+                name=packet["name"],
+                defaults={
+                    "description": packet["description"],
+                    "category": packet["category"],
+                    "created_by": profiles[packet["created_by"]],
+                    "image_url": packet["image_url"],
+                    "rules": packet["rules"],
+                    "is_private": False,
+                },
+            )
+            if created:
+                created_count += 1
+
+            updates = []
+            for field in ("description", "category", "image_url"):
+                if getattr(community, field) != packet[field]:
+                    setattr(community, field, packet[field])
+                    updates.append(field)
+            if community.created_by_id != profiles[packet["created_by"]].id:
+                community.created_by = profiles[packet["created_by"]]
+                updates.append("created_by")
+            if community.rules != packet["rules"]:
+                community.rules = packet["rules"]
+                updates.append("rules")
+            if updates:
+                community.save(update_fields=updates + ["updated_at"])
+
+            for member_username in packet["members"]:
+                role = "admin" if member_username == packet["created_by"] else "member"
+                CommunityMember.objects.get_or_create(
+                    community=community,
+                    user=profiles[member_username],
+                    defaults={"role": role},
+                )
+
+            member_count = community.members.count()
+            if community.member_count != member_count:
+                community.member_count = member_count
+                community.save(update_fields=["member_count", "updated_at"])
+
+            for post_index, (author_username, content) in enumerate(packet["posts"]):
+                if CommunityPost.objects.filter(community=community, author=profiles[author_username], content=content).exists():
+                    continue
+                post = CommunityPost.objects.create(
+                    community=community,
+                    author=profiles[author_username],
+                    content=content,
+                    likes_count=8 + packet_index + post_index,
+                    comments_count=2 + post_index,
+                )
+                created_at = now - timedelta(days=packet_index, hours=post_index + rng.randint(1, 3))
+                CommunityPost.objects.filter(pk=post.pk).update(created_at=created_at, updated_at=created_at)
+
+        self.stdout.write(f"  Created {created_count} communities")
+        return created_count
+
+    def _create_causes(self, profiles):
+        created_count = 0
+        today = timezone.now().date()
+
+        for packet in CAUSE_PACKETS:
+            cause, created = Cause.objects.get_or_create(
+                title=packet["title"],
+                defaults={
+                    "description": packet["description"],
+                    "category": packet["category"],
+                    "created_by": profiles[packet["created_by"]],
+                    "goal_amount": Decimal(packet["goal_amount"]),
+                    "raised_amount": Decimal(packet["raised_amount"]),
+                    "image_url": packet["image_url"],
+                    "status": packet["status"],
+                    "end_date": today + timedelta(days=packet["end_days"]),
+                },
+            )
+            if created:
+                created_count += 1
+
+            updates = []
+            desired_values = {
+                "description": packet["description"],
+                "category": packet["category"],
+                "created_by": profiles[packet["created_by"]],
+                "goal_amount": Decimal(packet["goal_amount"]),
+                "raised_amount": Decimal(packet["raised_amount"]),
+                "image_url": packet["image_url"],
+                "status": packet["status"],
+                "end_date": today + timedelta(days=packet["end_days"]),
+            }
+            for field, value in desired_values.items():
+                if getattr(cause, field) != value:
+                    setattr(cause, field, value)
+                    updates.append(field)
+            if updates:
+                cause.save(update_fields=updates)
+
+            for donor_username, amount, message in packet["donations"]:
+                Donation.objects.get_or_create(
+                    cause=cause,
+                    donor=profiles[donor_username],
+                    defaults={
+                        "amount": Decimal(amount),
+                        "message": message,
+                        "is_anonymous": False,
+                    },
+                )
+
+        self.stdout.write(f"  Created {created_count} causes")
+        return created_count
+
     def _clear_seeded_data(self):
         usernames = [spec["username"] for spec in OFFICIAL_USERS]
         titles = [packet["article"]["title"] for packet in STORY_PACKETS]
+        community_names = [packet["name"] for packet in COMMUNITY_PACKETS]
+        cause_titles = [packet["title"] for packet in CAUSE_PACKETS]
+        product_names = [item["name"] for item in STORE_PRODUCTS]
 
         deleted_posts = Post.objects.filter(author_id__username__in=usernames).delete()[0]
         deleted_news = NewsArticle.objects.filter(title__in=titles).delete()[0]
+        deleted_community_posts = CommunityPost.objects.filter(author__username__in=usernames).delete()[0]
+        deleted_communities = Community.objects.filter(name__in=community_names).delete()[0]
+        deleted_donations = Donation.objects.filter(donor__username__in=usernames).delete()[0]
+        deleted_causes = Cause.objects.filter(title__in=cause_titles).delete()[0]
+        deleted_products = Product.objects.filter(name__in=product_names).delete()[0]
+        deleted_wallets = Wallet.objects.filter(user_id__username__in=usernames).delete()[0]
         deleted_profiles = UserProfile.objects.filter(username__in=usernames).delete()[0]
         deleted_auth = AuthUser.objects.filter(username__in=usernames).delete()[0]
 
         self.stdout.write(
-            f"  Cleared {deleted_posts} posts, {deleted_news} news articles, {deleted_profiles} profiles, {deleted_auth} auth users"
+            "  Cleared "
+            f"{deleted_posts} posts, "
+            f"{deleted_news} news articles, "
+            f"{deleted_community_posts} community posts, "
+            f"{deleted_communities} communities, "
+            f"{deleted_donations} donations, "
+            f"{deleted_causes} causes, "
+            f"{deleted_products} products, "
+            f"{deleted_wallets} wallets, "
+            f"{deleted_profiles} profiles, "
+            f"{deleted_auth} auth users"
         )
