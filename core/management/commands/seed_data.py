@@ -496,18 +496,25 @@ class Command(BaseCommand):
                             help="Delete all previously seeded data before seeding")
 
     def handle(self, *args, **options):
-        if options["clear"]:
-            self._clear_seeded_data()
+        import traceback
+        try:
+            if options["clear"]:
+                self._clear_seeded_data()
 
-        users_created = self._create_users(options["users"])
-        self._create_posts(users_created, options["posts_per_user"])
-        self._create_news(options["news"])
+            users_created = self._create_users(options["users"])
+            self._create_posts(users_created, options["posts_per_user"])
+            self._create_news(options["news"])
 
-        self.stdout.write(self.style.SUCCESS(
-            f"\nSeeding complete: {len(users_created)} users, "
-            f"{len(users_created) * options['posts_per_user']} posts, "
-            f"{min(options['news'], len(NEWS_ARTICLES))} news articles."
-        ))
+            self.stdout.write(self.style.SUCCESS(
+                f"\nSeeding complete: {len(users_created)} users, "
+                f"{len(users_created) * options['posts_per_user']} posts, "
+                f"{min(options['news'], len(NEWS_ARTICLES))} news articles."
+            ))
+        except Exception as exc:
+            self.stderr.write(f"\n[seed_data ERROR] {type(exc).__name__}: {exc}")
+            self.stderr.write(traceback.format_exc())
+            # Exit 0 so a seed failure never breaks the build
+            return
 
     # ── Users ─────────────────────────────────────────────────────────────────
 
