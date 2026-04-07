@@ -40,6 +40,17 @@ def article_source(category: str) -> str:
         return "External"
     return "Herald Social"
 
+
+def article_source_type(category: str) -> str:
+    category = (category or "").lower()
+    if "loveworld" in category:
+        return "loveworld"
+    if "healing" in category:
+        return "healing_school"
+    if "external" in category or "christian" in category:
+        return "external"
+    return "herald"
+
 OFFICIAL_USERS = [
     {
         "username": "heraldnews",
@@ -439,6 +450,7 @@ class Command(BaseCommand):
             article = NewsArticle.objects.create(
                 title=article_spec["title"],
                 source=article_source(article_spec["category"]),
+                source_type=article_source_type(article_spec["category"]),
                 content=article_spec["content"],
                 category=article_spec["category"],
                 source_url=article_spec["source_url"],

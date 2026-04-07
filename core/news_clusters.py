@@ -36,6 +36,8 @@ def _display_topic(topic):
 
 
 def _article_source_type(article):
+    if getattr(article, 'source_type', None):
+        return article.source_type
     category = (article.category or '').lower()
     if 'loveworld' in category:
         return 'loveworld'

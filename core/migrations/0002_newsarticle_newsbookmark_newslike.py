@@ -18,6 +18,7 @@ class Migration(migrations.Migration):
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ('title', models.CharField(max_length=300)),
                 ('source', models.CharField(default='Herald Social', max_length=100)),
+                ('source_type', models.CharField(default='herald', max_length=50)),
                 ('content', models.TextField()),
                 ('category', models.CharField(max_length=50)),
                 ('source_url', models.URLField(blank=True, null=True)),
