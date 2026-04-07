@@ -300,6 +300,7 @@ def seed_backwards(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    atomic = False
 
     dependencies = [
         ('core', '0003_fix_news_articles_columns'),
