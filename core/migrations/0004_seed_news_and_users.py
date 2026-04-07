@@ -186,6 +186,17 @@ NEWS_ARTICLES = [
 ]
 
 
+def _source_for_category(category):
+    category = (category or '').lower()
+    if 'loveworld' in category:
+        return 'Loveworld'
+    if 'healing' in category:
+        return 'Healing School'
+    if 'external' in category or 'christian' in category:
+        return 'External'
+    return 'Herald Social'
+
+
 def seed_forward(apps, schema_editor):
     """Seed demo users, posts, and news articles."""
     import traceback as tb
@@ -214,6 +225,7 @@ def seed_forward(apps, schema_editor):
             NewsArticle.objects.create(
                 id=uuid.uuid4(),
                 title=a["title"],
+                source=_source_for_category(a.get("category")),
                 content=a["content"],
                 category=a["category"],
                 image_url=a.get("image_url", ""),

@@ -30,6 +30,7 @@ class Migration(migrations.Migration):
         _PgOnlyRunSQL(
             sql="""
                 ALTER TABLE news_articles
+                    ADD COLUMN IF NOT EXISTS source       VARCHAR(100) NOT NULL DEFAULT 'Herald Social',
                     ADD COLUMN IF NOT EXISTS category     VARCHAR(50)  NOT NULL DEFAULT 'general',
                     ADD COLUMN IF NOT EXISTS source_url   VARCHAR(200),
                     ADD COLUMN IF NOT EXISTS image_url    VARCHAR(200),

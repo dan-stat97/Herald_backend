@@ -423,6 +423,7 @@ class NewsArticle(models.Model):
     """News articles with extended fields"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=300)
+    source = models.CharField(max_length=100, default='Herald Social')
     content = models.TextField()
     category = models.CharField(max_length=50)
     source_url = models.URLField(null=True, blank=True)

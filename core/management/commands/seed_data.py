@@ -29,6 +29,17 @@ from users.models import User as UserProfile
 
 AuthUser = get_user_model()
 
+
+def article_source(category: str) -> str:
+    category = (category or "").lower()
+    if "loveworld" in category:
+        return "Loveworld"
+    if "healing" in category:
+        return "Healing School"
+    if "external" in category or "christian" in category:
+        return "External"
+    return "Herald Social"
+
 OFFICIAL_USERS = [
     {
         "username": "heraldnews",
@@ -427,6 +438,7 @@ class Command(BaseCommand):
             created_at = now - timedelta(hours=(packet_index * 7) + rng.randint(1, 6))
             article = NewsArticle.objects.create(
                 title=article_spec["title"],
+                source=article_source(article_spec["category"]),
                 content=article_spec["content"],
                 category=article_spec["category"],
                 source_url=article_spec["source_url"],

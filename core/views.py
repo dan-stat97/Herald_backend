@@ -181,6 +181,8 @@ class NewsArticleSerializer(serializers.ModelSerializer):
         return None
 
     def get_source(self, obj):
+        if getattr(obj, 'source', None):
+            return obj.source
         cat = (obj.category or '').lower()
         if 'loveworld' in cat: return 'Loveworld'
         if 'healing' in cat: return 'Healing School'

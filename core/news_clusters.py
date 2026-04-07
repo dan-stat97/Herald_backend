@@ -47,6 +47,8 @@ def _article_source_type(article):
 
 
 def _article_source(article):
+    if getattr(article, 'source', None):
+        return article.source
     source_type = _article_source_type(article)
     if source_type == 'loveworld':
         return 'Loveworld'
