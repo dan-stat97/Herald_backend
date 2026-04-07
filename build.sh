@@ -15,6 +15,9 @@ python manage.py collectstatic --noinput
 echo "Running database migrations (safe mode)..."
 python manage.py migrate_safe
 
+echo "Seeding official Herald content..."
+python manage.py seed_data --traceback
+
 echo "Verifying database setup..."
 python manage.py check --database default
 

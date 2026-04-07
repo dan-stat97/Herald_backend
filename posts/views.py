@@ -226,9 +226,11 @@ class PostViewSet(viewsets.ModelViewSet):
 	def following(self, request):
 		"""Posts from users the authenticated user follows."""
 		from core.models import Follow
+		from django.db.models import Q
 
 		limit = min(int(request.query_params.get('limit', 20)), 100)
 		page = max(int(request.query_params.get('page', 1)), 1)
+		default_usernames = ['heraldnews', 'heraldtoday', 'heraldworlddesk', 'heraldprayerdesk', 'heraldworship']
 
 		try:
 			profile = UserProfile.objects.get(user_id=request.user)
@@ -239,11 +241,36 @@ class PostViewSet(viewsets.ModelViewSet):
 			return Response({'data': [], 'pagination': {'page': 1, 'limit': limit, 'total': 0, 'total_pages': 0}})
 
 		if not following_ids:
-			# Not following anyone — return empty with a hint
+			default_ids = list(
+				UserProfile.objects.filter(username__in=default_usernames).exclude(id=profile.id).values_list('id', flat=True)
+			)
+			if not default_ids:
+				return Response({
+					'data': [],
+					'pagination': {'page': 1, 'limit': limit, 'total': 0, 'total_pages': 0},
+					'message': 'Follow some users to see their posts here.',
+				})
+
+			posts_qs = (
+				Post.objects
+				.select_related('author_id', 'author_id__user_id')
+				.filter(author_id__id__in=default_ids)
+				.order_by('-created_at')
+			)
+			total = posts_qs.count()
+			offset = (page - 1) * limit
+			posts = posts_qs[offset:offset + limit]
+			serializer = PostSerializer(posts, many=True, context={'request': request})
 			return Response({
-				'data': [],
-				'pagination': {'page': 1, 'limit': limit, 'total': 0, 'total_pages': 0},
-				'message': 'Follow some users to see their posts here.',
+				'data': serializer.data,
+				'pagination': {
+					'page': page,
+					'limit': limit,
+					'total': total,
+					'total_pages': (total + limit - 1) // limit,
+				},
+				'message': 'Showing official Herald accounts until you follow people.',
+				'is_default_feed': True,
 			})
 
 		posts_qs = (
