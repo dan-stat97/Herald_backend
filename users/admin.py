@@ -50,7 +50,7 @@ class UserAdmin(admin.ModelAdmin):
             'fields': ('id', 'user_id', 'username', 'display_name', 'full_name', 'email'),
         }),
         ('Profile', {
-            'fields': ('avatar_url', 'bio', 'tier', 'reputation'),
+            'fields': ('avatar_url', 'cover_url', 'bio', 'tier', 'reputation'),
         }),
         ('Status', {
             'fields': ('is_verified', 'is_creator', 'onboarding_completed'),

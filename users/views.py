@@ -7,6 +7,8 @@ from urllib import request as urllib_request
 from django.contrib.auth import authenticate, logout
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
+from django.db.models import DateTimeField, Exists, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from rest_framework import generics, permissions, status, viewsets, views
 from rest_framework.decorators import action
@@ -16,7 +18,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .models import User as UserProfile
 from .serializers import UserProfileSerializer, UserReplySerializer, UserSignupSerializer
-from posts.models import Comment, Post
+from posts.models import Comment, Post, PostRepost
 
 AuthUser = get_user_model()
 KINGSCHAT_TOKEN_URL = 'https://connect.kingsch.at/developer/oauth2/token'
@@ -594,6 +596,13 @@ class UserPostsView(views.APIView):
         tab = request.query_params.get('tab', 'posts')
         base_posts = Post.objects.select_related('author_id', 'author_id__user_id')
 
+        reposted_at_subquery = (
+            PostRepost.objects
+            .filter(post=OuterRef('pk'), user=profile)
+            .order_by('-created_at')
+            .values('created_at')[:1]
+        )
+
         if tab == 'likes':
             posts = base_posts.filter(likes__user=profile).order_by('-likes__created_at').distinct()
         elif tab == 'media':
@@ -604,7 +613,20 @@ class UserPostsView(views.APIView):
                 .order_by('-created_at')
             )
         else:
-            posts = base_posts.filter(author_id=profile).order_by('-created_at')
+            posts = (
+                base_posts
+                .filter(Q(author_id=profile) | Q(reposts__user=profile))
+                .annotate(
+                    profile_reposted_at=Subquery(reposted_at_subquery, output_field=DateTimeField()),
+                    profile_reposted=Exists(PostRepost.objects.filter(post=OuterRef('pk'), user=profile)),
+                    profile_activity_at=Coalesce(
+                        Subquery(reposted_at_subquery, output_field=DateTimeField()),
+                        'created_at',
+                    ),
+                )
+                .order_by('-profile_activity_at', '-created_at')
+                .distinct()
+            )
 
         from posts.serializers import PostSerializer
 

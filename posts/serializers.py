@@ -54,6 +54,8 @@ class PostSerializer(serializers.ModelSerializer):
     is_liked = serializers.SerializerMethodField()
     is_reposted = serializers.SerializerMethodField()
     is_bookmarked = serializers.SerializerMethodField()
+    profile_reposted = serializers.SerializerMethodField()
+    profile_reposted_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
@@ -61,13 +63,13 @@ class PostSerializer(serializers.ModelSerializer):
             'id', 'author_id', 'username', 'display_name', 'avatar_url', 'is_verified', 'is_creator',
             'content', 'media_url', 'media_type', 'likes_count',
             'comments_count', 'shares_count', 'bookmarks_count', 'httn_earned',
-            'is_liked', 'is_reposted', 'is_bookmarked',
+            'is_liked', 'is_reposted', 'is_bookmarked', 'profile_reposted', 'profile_reposted_at',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'author_id', 'username', 'display_name', 'avatar_url', 'is_verified', 'is_creator',
             'likes_count', 'comments_count', 'shares_count', 'bookmarks_count', 'httn_earned',
-            'is_liked', 'is_reposted', 'is_bookmarked',
+            'is_liked', 'is_reposted', 'is_bookmarked', 'profile_reposted', 'profile_reposted_at',
             'created_at', 'updated_at'
         ]
 
@@ -316,6 +318,18 @@ class PostSerializer(serializers.ModelSerializer):
                 return False
             return PostBookmark.objects.filter(post=obj, user=profile).exists()
 
+    def get_profile_reposted(self, obj):
+        return bool(getattr(obj, 'profile_reposted', False))
+
+    def get_profile_reposted_at(self, obj):
+        value = getattr(obj, 'profile_reposted_at', None)
+        if value is None:
+            return None
+        try:
+            return value.isoformat()
+        except Exception:
+            return value
+
     def to_representation(self, instance):
         try:
             return super().to_representation(instance)
@@ -342,6 +356,8 @@ class PostSerializer(serializers.ModelSerializer):
                 'is_liked': False,
                 'is_reposted': False,
                 'is_bookmarked': False,
+                'profile_reposted': False,
+                'profile_reposted_at': None,
             }
             return data
 

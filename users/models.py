@@ -13,6 +13,7 @@ class User(models.Model):
     full_name = models.CharField(max_length=200, null=True, blank=True)
     email = models.EmailField()
     avatar_url = models.URLField(null=True, blank=True)
+    cover_url = models.URLField(null=True, blank=True)
     bio = models.TextField(null=True, blank=True)
     notifications_enabled = models.BooleanField(default=True)
     privacy_level = models.CharField(

@@ -28,7 +28,7 @@ from users.extra_views import (
     UserBulkFollowView,
     UserOnboardingCompleteView,
 )
-from users.avatar import AvatarUploadView
+from users.avatar import AvatarUploadView, CoverUploadView
 from .social_views import BookmarkViewSet
 from .leaderboard_views import LeaderboardViewSet
 from .auth_views import signup, signout, current_user
@@ -179,6 +179,7 @@ urlpatterns = [
     # New wallet and user endpoints
     path('v1/wallets/transfer/', WalletTransferView.as_view(), name='wallet-transfer'),
     path('v1/users/me/avatar/', AvatarUploadView.as_view(), name='user-avatar'),
+    path('v1/users/me/cover/', CoverUploadView.as_view(), name='user-cover'),
     
     # Communities join/leave endpoints  
     path('v1/communities/', CommunityListCreateView.as_view(), name='community-list-create'),

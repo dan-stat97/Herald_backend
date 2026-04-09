@@ -46,6 +46,7 @@ def api_root(request, format=None):
             'me':               _url(request, '/users/me/'),
             'me_stats':         _url(request, '/users/me/stats/'),
             'me_avatar':        _url(request, '/users/me/avatar/'),
+            'me_cover':         _url(request, '/users/me/cover/'),
             'me_settings':      _url(request, '/users/me/settings/'),
             'me_posts':         _url(request, '/users/me/posts/'),
             'me_tasks':         _url(request, '/users/me/tasks/'),

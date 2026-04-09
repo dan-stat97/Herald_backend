@@ -23,7 +23,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = [
-            'id', 'user_id', 'username', 'display_name', 'full_name', 'email', 'avatar_url', 'bio',
+            'id', 'user_id', 'username', 'display_name', 'full_name', 'email', 'avatar_url', 'cover_url', 'bio',
             'followers_count', 'following_count', 'posts_count', 'is_following',
             'notifications_enabled', 'privacy_level', 'email_updates', 'interests', 'onboarding_completed',
             'tier', 'reputation', 'is_verified', 'is_creator', 'auth_provider',
