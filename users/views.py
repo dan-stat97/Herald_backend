@@ -571,7 +571,7 @@ class UserByUsernameView(views.APIView):
             profile = UserProfile.objects.get(username=username)
         except UserProfile.DoesNotExist:
             return Response({'error': 'User not found'}, status=404)
-        return Response(UserProfileSerializer(profile).data)
+        return Response(UserProfileSerializer(profile, context={'request': request}).data)
 
 
 class UserPostsView(views.APIView):

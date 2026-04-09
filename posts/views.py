@@ -225,8 +225,8 @@ class PostViewSet(viewsets.ModelViewSet):
 	@action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
 	def following(self, request):
 		"""Posts from users the authenticated user follows."""
-		from core.models import Follow
-		from django.db.models import Q
+		from core.models import Follow, Profiles
+		from users.legacy_profiles import ensure_legacy_profile
 
 		limit = min(int(request.query_params.get('limit', 20)), 100)
 		page = max(int(request.query_params.get('page', 1)), 1)
@@ -234,8 +234,9 @@ class PostViewSet(viewsets.ModelViewSet):
 
 		try:
 			profile = UserProfile.objects.get(user_id=request.user)
+			legacy_profile = ensure_legacy_profile(profile)
 			following_ids = list(
-				Follow.objects.filter(follower_id=profile.id).values_list('following_id', flat=True)
+				Follow.objects.filter(follower_id=legacy_profile.id).values_list('following_id', flat=True)
 			)
 		except UserProfile.DoesNotExist:
 			return Response({'data': [], 'pagination': {'page': 1, 'limit': limit, 'total': 0, 'total_pages': 0}})
@@ -273,10 +274,14 @@ class PostViewSet(viewsets.ModelViewSet):
 				'is_default_feed': True,
 			})
 
+		following_auth_user_ids = list(
+			Profiles.objects.filter(id__in=following_ids).values_list('user_id', flat=True)
+		)
+
 		posts_qs = (
 			Post.objects
 			.select_related('author_id', 'author_id__user_id')
-			.filter(author_id__id__in=following_ids)
+			.filter(author_id__user_id_id__in=following_auth_user_ids)
 			.order_by('-created_at')
 		)
 
