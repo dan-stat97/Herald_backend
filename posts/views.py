@@ -43,9 +43,17 @@ class PostViewSet(viewsets.ModelViewSet):
 			return queryset
 
 	def list(self, request, *args, **kwargs):
-		"""Override list to add error handling"""
+		"""Override list to add error handling and page-level serializer caching."""
 		try:
-			return super().list(request, *args, **kwargs)
+			queryset = self.filter_queryset(self.get_queryset())
+			page = self.paginate_queryset(queryset)
+			if page is not None:
+				page_items = list(page)
+				serializer = self.get_serializer(page_items, many=True, context={**self.get_serializer_context(), '_post_list': page_items})
+				return self.get_paginated_response(serializer.data)
+			items = list(queryset)
+			serializer = self.get_serializer(items, many=True, context={**self.get_serializer_context(), '_post_list': items})
+			return Response(serializer.data)
 		except Exception as e:
 			print(f"Error listing posts: {e}")
 			# Return empty paginated payload instead of 500 error
@@ -177,9 +185,11 @@ class PostViewSet(viewsets.ModelViewSet):
 		posts = Post.objects.filter(author_id__user_id=request.user)
 		page = self.paginate_queryset(posts)
 		if page is not None:
-			serializer = PostSerializer(page, many=True)
+			page_items = list(page)
+			serializer = PostSerializer(page_items, many=True, context={**self.get_serializer_context(), '_post_list': page_items})
 			return self.get_paginated_response(serializer.data)
-		serializer = PostSerializer(posts, many=True)
+		items = list(posts)
+		serializer = PostSerializer(items, many=True, context={**self.get_serializer_context(), '_post_list': items})
 		return Response(serializer.data)
 
 	@action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
@@ -219,8 +229,9 @@ class PostViewSet(viewsets.ModelViewSet):
 				.order_by('-engagement', '-created_at')[:limit]
 			)
 
-		serializer = PostSerializer(posts, many=True)
-		return Response({'data': serializer.data, 'pagination': {'page': 1, 'limit': limit, 'total': len(serializer.data), 'total_pages': 1}})
+		post_items = list(posts)
+		serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items})
+		return Response({'data': serializer.data, 'pagination': {'page': 1, 'limit': limit, 'total': len(post_items), 'total_pages': 1}})
 
 	@action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
 	def following(self, request):
@@ -261,7 +272,8 @@ class PostViewSet(viewsets.ModelViewSet):
 			total = posts_qs.count()
 			offset = (page - 1) * limit
 			posts = posts_qs[offset:offset + limit]
-			serializer = PostSerializer(posts, many=True, context={'request': request})
+			post_items = list(posts)
+			serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items})
 			return Response({
 				'data': serializer.data,
 				'pagination': {
@@ -289,7 +301,8 @@ class PostViewSet(viewsets.ModelViewSet):
 		offset = (page - 1) * limit
 		posts = posts_qs[offset:offset + limit]
 
-		serializer = PostSerializer(posts, many=True)
+		post_items = list(posts)
+		serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items})
 		return Response({
 			'data': serializer.data,
 			'pagination': {
