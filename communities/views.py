@@ -8,6 +8,10 @@ from .models import (
     CommunityPostComment, CommunityJoinRequest,
 )
 from users.models import User
+from .notify import (
+    notify_join_request_received, notify_join_request_reviewed,
+    notify_post_liked, notify_post_commented,
+)
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -342,7 +346,9 @@ class CommunityPostLikeView(views.APIView):
         profile = _get_profile(request.user)
         _, created = CommunityPostLike.objects.get_or_create(post=post, user=profile)
         if created:
-            post.likes_count = post.likes.count(); post.save(update_fields=['likes_count'])
+            post.likes_count = post.likes.count()
+            post.save(update_fields=['likes_count'])
+            notify_post_liked(post, profile)
         return Response({'liked': True, 'likes_count': post.likes_count})
 
     def delete(self, request, community_id, post_id):
@@ -384,6 +390,7 @@ class CommunityPostCommentsView(views.APIView):
         comment = CommunityPostComment.objects.create(post=post, author=profile, content=content)
         post.comments_count = post.comments.count()
         post.save(update_fields=['comments_count'])
+        notify_post_commented(post, profile, content[:80])
         return Response(_serialize_comment(comment), status=201)
 
     def delete(self, request, community_id, post_id):
@@ -554,8 +561,9 @@ class CommunityJoinRequestDetailView(views.APIView):
         jr.save(update_fields=['status', 'reviewed_by', 'reviewed_at'])
 
         if action == 'approve':
-            m, _ = CommunityMember.objects.get_or_create(community=community, user=jr.user)
+            CommunityMember.objects.get_or_create(community=community, user=jr.user)
             community.member_count = community.members.count()
             community.save(update_fields=['member_count'])
 
+        notify_join_request_reviewed(jr)
         return Response(_serialize_join_request(jr))

@@ -4,6 +4,7 @@ from rest_framework.response import Response
 
 from .models import Community, CommunityMember, CommunityJoinRequest
 from users.models import User as UserProfile
+from .notify import notify_join_request_received
 
 
 def _get_profile(auth_user):
@@ -73,6 +74,8 @@ class CommunityJoinView(views.APIView):
                 jr.reviewed_by = None
                 jr.save(update_fields=['status', 'answer', 'reviewed_at', 'reviewed_by'])
                 created = True
+            if created:
+                notify_join_request_received(community, user_profile)
             return Response({
                 'join_request': True,
                 'status': jr.status,
