@@ -594,6 +594,10 @@ class UserPostsView(views.APIView):
                 return Response({'error': 'User not found'}, status=404)
 
         tab = request.query_params.get('tab', 'posts')
+        try:
+            limit = max(1, min(int(request.query_params.get('limit', 20)), 50))
+        except (TypeError, ValueError):
+            limit = 20
         base_posts = Post.objects.select_related('author_id', 'author_id__user_id')
 
         reposted_at_subquery = (
@@ -631,7 +635,12 @@ class UserPostsView(views.APIView):
         from posts.serializers import PostSerializer
 
         try:
-            serializer = PostSerializer(posts, many=True, context={'request': request})
+            page_posts = list(posts[:limit])
+            serializer = PostSerializer(
+                page_posts,
+                many=True,
+                context={'request': request, '_post_list': page_posts},
+            )
             return Response(serializer.data)
         except Exception as exc:
             print(f'Error serializing posts: {exc}')
