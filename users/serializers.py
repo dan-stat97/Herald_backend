@@ -14,6 +14,7 @@ class UserSignupSerializer(serializers.Serializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    website = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     email = serializers.SerializerMethodField()
     followers_count = serializers.SerializerMethodField()
     following_count = serializers.SerializerMethodField()
@@ -23,13 +24,25 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = [
-            'id', 'user_id', 'username', 'display_name', 'full_name', 'email', 'avatar_url', 'cover_url', 'bio',
+            'id', 'user_id', 'username', 'display_name', 'full_name', 'email', 'avatar_url', 'cover_url', 'bio', 'location', 'website',
             'followers_count', 'following_count', 'posts_count', 'is_following',
             'notifications_enabled', 'privacy_level', 'email_updates', 'interests', 'onboarding_completed',
             'tier', 'reputation', 'is_verified', 'is_creator', 'auth_provider',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'user_id', 'reputation', 'auth_provider', 'created_at', 'updated_at']
+
+    def validate_location(self, value):
+        value = (value or '').strip()
+        return value or None
+
+    def validate_website(self, value):
+        value = (value or '').strip()
+        if not value:
+            return None
+        if '://' not in value:
+            value = f'https://{value}'
+        return value
 
     def get_email(self, obj):
         try:
