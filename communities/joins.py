@@ -1,7 +1,8 @@
+from django.utils import timezone
 from rest_framework import permissions, status, views
 from rest_framework.response import Response
 
-from .models import Community, CommunityMember
+from .models import Community, CommunityMember, CommunityJoinRequest
 from users.models import User as UserProfile
 
 
@@ -47,13 +48,40 @@ class CommunityJoinView(views.APIView):
 
         user_profile = _get_profile(request.user)
 
-        member, created = CommunityMember.objects.get_or_create(
-            community=community,
-            user=user_profile,
-        )
-        if not created:
-            return Response({'error': 'Already a member of this community'}, status=status.HTTP_400_BAD_REQUEST)
+        # Already a member?
+        if CommunityMember.objects.filter(community=community, user=user_profile).exists():
+            return Response({'error': 'Already a member of this community'}, status=400)
 
+        mt = community.membership_type
+
+        # Invite-only: no self-join
+        if mt == Community.MEMBERSHIP_INVITE:
+            return Response({'error': 'This community is invite only'}, status=403)
+
+        # Request-to-join: create or surface existing join request
+        if mt == Community.MEMBERSHIP_REQUEST:
+            jr, created = CommunityJoinRequest.objects.get_or_create(
+                community=community,
+                user=user_profile,
+                defaults={'answer': (request.data.get('answer') or '').strip() or None},
+            )
+            if not created and jr.status == CommunityJoinRequest.STATUS_REJECTED:
+                # Allow re-application after rejection
+                jr.status = CommunityJoinRequest.STATUS_PENDING
+                jr.answer = (request.data.get('answer') or '').strip() or None
+                jr.reviewed_at = None
+                jr.reviewed_by = None
+                jr.save(update_fields=['status', 'answer', 'reviewed_at', 'reviewed_by'])
+                created = True
+            return Response({
+                'join_request': True,
+                'status': jr.status,
+                'message': 'Join request submitted' if created else f'Request already {jr.status}',
+                'community_id': str(community.id),
+            }, status=201 if created else 200)
+
+        # Open: direct join
+        CommunityMember.objects.get_or_create(community=community, user=user_profile)
         community.member_count = community.members.count()
         community.save(update_fields=['member_count'])
 
@@ -62,8 +90,8 @@ class CommunityJoinView(views.APIView):
             'message': f'Joined {community.name}',
             'community_id': str(community.id),
             'community_name': community.name,
-            'member_count': community.member_count
-        }, status=status.HTTP_200_OK)
+            'member_count': community.member_count,
+        }, status=200)
 
     def delete(self, request, community_id):
         try:
@@ -73,11 +101,16 @@ class CommunityJoinView(views.APIView):
 
         user_profile = _get_profile(request.user)
 
+        # Also cancel any pending join request
+        CommunityJoinRequest.objects.filter(
+            community=community, user=user_profile, status=CommunityJoinRequest.STATUS_PENDING
+        ).delete()
+
         try:
             member = CommunityMember.objects.get(community=community, user=user_profile)
             member.delete()
         except CommunityMember.DoesNotExist:
-            return Response({'error': 'Not a member of this community'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Not a member of this community'}, status=400)
 
         community.member_count = community.members.count()
         community.save(update_fields=['member_count'])
@@ -87,5 +120,5 @@ class CommunityJoinView(views.APIView):
             'message': f'Left {community.name}',
             'community_id': str(community.id),
             'community_name': community.name,
-            'member_count': community.member_count
-        }, status=status.HTTP_200_OK)
+            'member_count': community.member_count,
+        }, status=200)

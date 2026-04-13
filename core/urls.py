@@ -54,7 +54,9 @@ from .news_clusters import NewsClustersView, NewsArticleContextView
 from communities.joins import CommunityJoinView
 from communities.views import (
     CommunityListCreateView, CommunityDetailView,
-    CommunityPostsView, CommunityPostLikeView, CommunityMembersView,
+    CommunityPostsView, CommunityPostLikeView, CommunityPostCommentsView,
+    CommunityPostPinView, CommunityMembersView,
+    CommunityJoinRequestsView, CommunityJoinRequestDetailView,
 )
 from causes.views import CauseViewSet as CausesViewSet
 from tasks.views import TaskViewSet
@@ -182,13 +184,17 @@ urlpatterns = [
     path('v1/users/me/avatar/', AvatarUploadView.as_view(), name='user-avatar'),
     path('v1/users/me/cover/', CoverUploadView.as_view(), name='user-cover'),
     
-    # Communities join/leave endpoints  
+    # Communities endpoints
     path('v1/communities/', CommunityListCreateView.as_view(), name='community-list-create'),
     path('v1/communities/<uuid:community_id>/', CommunityDetailView.as_view(), name='community-detail'),
     path('v1/communities/<uuid:community_id>/join/', CommunityJoinView.as_view(), name='community-join'),
     path('v1/communities/<uuid:community_id>/posts/', CommunityPostsView.as_view(), name='community-posts'),
     path('v1/communities/<uuid:community_id>/posts/<uuid:post_id>/like/', CommunityPostLikeView.as_view(), name='community-post-like'),
+    path('v1/communities/<uuid:community_id>/posts/<uuid:post_id>/comments/', CommunityPostCommentsView.as_view(), name='community-post-comments'),
+    path('v1/communities/<uuid:community_id>/posts/<uuid:post_id>/pin/', CommunityPostPinView.as_view(), name='community-post-pin'),
     path('v1/communities/<uuid:community_id>/members/', CommunityMembersView.as_view(), name='community-members'),
+    path('v1/communities/<uuid:community_id>/join-requests/', CommunityJoinRequestsView.as_view(), name='community-join-requests'),
+    path('v1/communities/<uuid:community_id>/join-requests/<uuid:request_id>/', CommunityJoinRequestDetailView.as_view(), name='community-join-request-detail'),
     
     # Admin endpoints
     path('v1/admin/me/role/', AdminRoleView.as_view(), name='admin-role'),
