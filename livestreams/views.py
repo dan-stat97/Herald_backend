@@ -175,11 +175,26 @@ class LiveStreamViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Create stream with authenticated user"""
         from users.models import User as UserProfile
+        from rest_framework.exceptions import ValidationError
         try:
             profile = UserProfile.objects.get(user_id=self.request.user)
             status_value = serializer.validated_data.get('status', 'scheduled')
             provider = serializer.validated_data.get('provider', 'manual')
             extra_fields = {}
+
+            if status_value == 'live':
+                existing_live = (
+                    LiveStream.objects.filter(user=profile, status='live')
+                    .exclude(ended_at__isnull=False)
+                    .order_by('-started_at', '-created_at')
+                    .first()
+                )
+                if existing_live:
+                    raise ValidationError({
+                        'status': 'You already have a live stream in progress. End it before creating another one.',
+                        'stream_id': str(existing_live.id),
+                    })
+
             if status_value == 'live':
                 extra_fields['started_at'] = timezone.now()
 
@@ -204,16 +219,16 @@ class LiveStreamViewSet(viewsets.ModelViewSet):
                 })
             serializer.save(user=profile, **extra_fields)
         except IVSProvisioningError as exc:
-            from rest_framework.exceptions import ValidationError
             raise ValidationError({'provider': str(exc)})
         except UserProfile.DoesNotExist:
-            from rest_framework.exceptions import ValidationError
             raise ValidationError("User profile not found")
     
     @action(detail=True, methods=['patch'])
     def update_stats(self, request, pk=None):
         """Update stream viewer count and status"""
         stream = self.get_object()
+        if str(stream.user.user_id) != str(request.user.id):
+            return Response({'detail': 'Only the stream owner can update this stream.'}, status=status.HTTP_403_FORBIDDEN)
         
         viewer_count = request.data.get('viewer_count')
         stream_status = request.data.get('status')
@@ -233,6 +248,26 @@ class LiveStreamViewSet(viewsets.ModelViewSet):
         
         stream.save()
         
+        serializer = self.get_serializer(stream)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def end(self, request, pk=None):
+        """Owner-controlled hard end for a stream outside the native studio flow."""
+        stream = self.get_object()
+        if str(stream.user.user_id) != str(request.user.id):
+            return Response({'detail': 'Only the stream owner can end this stream.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if stream.status == 'ended':
+            serializer = self.get_serializer(stream)
+            return Response(serializer.data)
+
+        stream.status = 'ended'
+        if not stream.ended_at:
+            stream.ended_at = timezone.now()
+        stream.viewer_count = 0
+        stream.save(update_fields=['status', 'ended_at', 'viewer_count'])
+
         serializer = self.get_serializer(stream)
         return Response(serializer.data)
 
