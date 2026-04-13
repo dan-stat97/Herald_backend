@@ -7,6 +7,7 @@ Seeds realistic official Herald content across:
 - communities and community posts
 - causes and donations
 - store products
+- livestreams, stream chat, and stream donations
 
 The command is intentionally idempotent:
 - users are created once and then reused
@@ -19,6 +20,7 @@ Usage:
     python manage.py seed_data --clear
     python manage.py seed_data --skip-posts
     python manage.py seed_data --skip-news
+    python manage.py seed_data --skip-streams
 """
 
 from datetime import timedelta
@@ -33,6 +35,7 @@ from causes.models import Cause, Donation
 from communities.models import Community, CommunityMember, CommunityPost
 from core.models import NewsArticle
 from estore.models import Product
+from livestreams.models import LiveStream, StreamChatMessage, StreamDonation
 from posts.models import Post
 from users.models import User as UserProfile
 from wallets.models import Wallet
@@ -281,6 +284,69 @@ CAUSE_PACKETS = [
     },
 ]
 
+STREAM_PACKETS = [
+    {
+        "title": "World Evangelism Prayer Watch",
+        "description": "A live prayer stream focused on world evangelism, bold witness, and open doors for the Gospel.",
+        "host": "heraldworlddesk",
+        "status": "live",
+        "stream_url": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+        "thumbnail_url": "https://images.unsplash.com/photo-1508672019048-805c876b67e2?w=1200",
+        "viewer_count": 2841,
+        "started_hours_ago": 1,
+        "chat": [
+            ("heraldprayerdesk", "Praying for laborers to be sent into the harvest."),
+            ("heraldnews", "This stream is stirring a lot of faith tonight."),
+            ("heraldtoday", "Believing for open doors across campuses and cities."),
+        ],
+        "donations": [
+            ("heraldnews", "2500.00", "For missions and outreach"),
+            ("heraldprayerdesk", "1800.00", "Standing with this prayer focus"),
+        ],
+    },
+    {
+        "title": "Herald Worship Night Live",
+        "description": "Songs of faith, prayer, and worship moments from the Herald Worship community.",
+        "host": "heraldworship",
+        "status": "live",
+        "stream_url": "https://test-streams.mux.dev/test_001/stream.m3u8",
+        "thumbnail_url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=1200",
+        "viewer_count": 1630,
+        "started_hours_ago": 2,
+        "chat": [
+            ("heraldsports", "The atmosphere here is beautiful."),
+            ("heraldnews", "This setlist is flowing so well."),
+        ],
+        "donations": [
+            ("heraldtoday", "1400.00", "Blessed by this stream"),
+        ],
+    },
+    {
+        "title": "Healing & Testimony Night",
+        "description": "A scheduled stream for testimonies, healing scriptures, and corporate prayer.",
+        "host": "heraldprayerdesk",
+        "status": "scheduled",
+        "stream_url": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+        "thumbnail_url": "https://images.unsplash.com/photo-1529070538774-1843cb3265df?w=1200",
+        "viewer_count": 0,
+        "scheduled_hours_ahead": 8,
+        "chat": [],
+        "donations": [],
+    },
+    {
+        "title": "Creators & Culture Roundtable",
+        "description": "A live conversation for Christian creators building culture with conviction and craft.",
+        "host": "heraldtoday",
+        "status": "scheduled",
+        "stream_url": "https://test-streams.mux.dev/test_001/stream.m3u8",
+        "thumbnail_url": "https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=1200",
+        "viewer_count": 0,
+        "scheduled_hours_ahead": 26,
+        "chat": [],
+        "donations": [],
+    },
+]
+
 STORY_PACKETS = [
     {
         "username": "heraldprayerdesk",
@@ -511,6 +577,7 @@ class Command(BaseCommand):
         parser.add_argument("--clear", action="store_true", help="Delete previously seeded official Herald content first")
         parser.add_argument("--skip-posts", action="store_true", help="Skip creating feed posts")
         parser.add_argument("--skip-news", action="store_true", help="Skip creating news articles")
+        parser.add_argument("--skip-streams", action="store_true", help="Skip creating livestreams")
 
     def handle(self, *args, **options):
         rng = random.Random(42)
@@ -522,6 +589,7 @@ class Command(BaseCommand):
         self._seed_wallets(profiles)
         created_posts = 0 if options["skip_posts"] else self._create_posts(profiles, rng)
         created_news = 0 if options["skip_news"] else self._create_news(rng)
+        created_streams = 0 if options["skip_streams"] else self._create_streams(profiles, rng)
         created_products = self._create_products()
         created_communities = self._create_communities(profiles, rng)
         created_causes = self._create_causes(profiles)
@@ -532,6 +600,7 @@ class Command(BaseCommand):
                 f"{len(profiles)} official users ready, "
                 f"{created_posts} posts created, "
                 f"{created_news} news articles created, "
+                f"{created_streams} streams created, "
                 f"{created_products} products created, "
                 f"{created_communities} communities created, "
                 f"{created_causes} causes created."
@@ -697,6 +766,62 @@ class Command(BaseCommand):
         self.stdout.write(f"  Created {created_count} store products")
         return created_count
 
+    def _create_streams(self, profiles, rng):
+        created_count = 0
+        now = timezone.now()
+
+        for packet_index, packet in enumerate(STREAM_PACKETS):
+            host = profiles[packet["host"]]
+            defaults = {
+                "user": host,
+                "description": packet["description"],
+                "status": packet["status"],
+                "stream_url": packet["stream_url"],
+                "thumbnail_url": packet["thumbnail_url"],
+                "viewer_count": packet["viewer_count"],
+                "started_at": now - timedelta(hours=packet.get("started_hours_ago", 1)) if packet["status"] == "live" else None,
+                "scheduled_for": now + timedelta(hours=packet.get("scheduled_hours_ahead", 6)) if packet["status"] == "scheduled" else None,
+            }
+            stream, created = LiveStream.objects.get_or_create(title=packet["title"], defaults=defaults)
+            if created:
+                created_count += 1
+
+            updates = []
+            for field, value in defaults.items():
+                if getattr(stream, field) != value:
+                    setattr(stream, field, value)
+                    updates.append(field)
+            if stream.ended_at is not None:
+                stream.ended_at = None
+                updates.append("ended_at")
+            if updates:
+                stream.save(update_fields=updates)
+
+            for chat_index, (username, message) in enumerate(packet["chat"]):
+                chat_item, was_created = StreamChatMessage.objects.get_or_create(
+                    stream=stream,
+                    user=profiles[username],
+                    message=message,
+                )
+                if was_created:
+                    created_at = now - timedelta(minutes=(packet_index * 6) + chat_index + rng.randint(1, 4))
+                    StreamChatMessage.objects.filter(pk=chat_item.pk).update(created_at=created_at)
+
+            for donation_index, (username, amount, message) in enumerate(packet["donations"]):
+                donation_item, was_created = StreamDonation.objects.get_or_create(
+                    stream=stream,
+                    user=profiles[username],
+                    amount=Decimal(amount),
+                    message=message,
+                    defaults={"currency": "espees"},
+                )
+                if was_created:
+                    created_at = now - timedelta(minutes=(packet_index * 9) + donation_index + rng.randint(1, 3))
+                    StreamDonation.objects.filter(pk=donation_item.pk).update(created_at=created_at)
+
+        self.stdout.write(f"  Created {created_count} livestreams")
+        return created_count
+
     def _create_communities(self, profiles, rng):
         created_count = 0
         now = timezone.now()
@@ -818,9 +943,11 @@ class Command(BaseCommand):
         community_names = [packet["name"] for packet in COMMUNITY_PACKETS]
         cause_titles = [packet["title"] for packet in CAUSE_PACKETS]
         product_names = [item["name"] for item in STORE_PRODUCTS]
+        stream_titles = [packet["title"] for packet in STREAM_PACKETS]
 
         deleted_posts = Post.objects.filter(author_id__username__in=usernames).delete()[0]
         deleted_news = NewsArticle.objects.filter(title__in=titles).delete()[0]
+        deleted_streams = LiveStream.objects.filter(title__in=stream_titles).delete()[0]
         deleted_community_posts = CommunityPost.objects.filter(author__username__in=usernames).delete()[0]
         deleted_communities = Community.objects.filter(name__in=community_names).delete()[0]
         deleted_donations = Donation.objects.filter(donor__username__in=usernames).delete()[0]
@@ -834,6 +961,7 @@ class Command(BaseCommand):
             "  Cleared "
             f"{deleted_posts} posts, "
             f"{deleted_news} news articles, "
+            f"{deleted_streams} streams, "
             f"{deleted_community_posts} community posts, "
             f"{deleted_communities} communities, "
             f"{deleted_donations} donations, "

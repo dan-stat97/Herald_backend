@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from django.db.models import F
 from .models import Post, PostLike, PostRepost, PostBookmark
 from .serializers import PostSerializer, PostCreateSerializer
+from .ranking import rank_feed_posts
 from users.models import User as UserProfile
 from users.views import ensure_user_profile
 from core.pagination import StandardPagination
@@ -43,15 +44,25 @@ class PostViewSet(viewsets.ModelViewSet):
 			return queryset
 
 	def list(self, request, *args, **kwargs):
-		"""Override list to add error handling and page-level serializer caching."""
+		"""Serve a ranked home feed similar to X's recommendation blend."""
 		try:
 			queryset = self.filter_queryset(self.get_queryset())
-			page = self.paginate_queryset(queryset)
+			sort = request.query_params.get('sort')
+			manual_sort = bool(sort and sort != '-created_at')
+			search = request.query_params.get('search')
+			candidate_limit = min(max(int(request.query_params.get('limit', 20)), 20) * 10, 320)
+
+			if manual_sort or search:
+				ranked_items = queryset
+			else:
+				ranked_items = rank_feed_posts(queryset, request, candidate_limit=candidate_limit)
+
+			page = self.paginate_queryset(ranked_items)
 			if page is not None:
 				page_items = list(page)
 				serializer = self.get_serializer(page_items, many=True, context={**self.get_serializer_context(), '_post_list': page_items})
 				return self.get_paginated_response(serializer.data)
-			items = list(queryset)
+			items = list(ranked_items)
 			serializer = self.get_serializer(items, many=True, context={**self.get_serializer_context(), '_post_list': items})
 			return Response(serializer.data)
 		except Exception as e:

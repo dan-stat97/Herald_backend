@@ -5,6 +5,10 @@ import uuid
 
 class LiveStream(models.Model):
     """Live streaming model"""
+    PROVIDER_CHOICES = [
+        ('manual', 'Manual'),
+        ('ivs', 'Amazon IVS'),
+    ]
     STATUS_CHOICES = [
         ('scheduled', 'Scheduled'),
         ('live', 'Live'),
@@ -13,11 +17,20 @@ class LiveStream(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='streams')
+    provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default='manual')
     title = models.CharField(max_length=200)
     description = models.TextField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
     stream_url = models.URLField(null=True, blank=True)
+    playback_url = models.URLField(null=True, blank=True)
     thumbnail_url = models.URLField(null=True, blank=True)
+    ingest_endpoint = models.URLField(null=True, blank=True)
+    provider_stream_key = models.CharField(max_length=255, null=True, blank=True)
+    ivs_channel_arn = models.CharField(max_length=255, null=True, blank=True)
+    ivs_stage_arn = models.CharField(max_length=255, null=True, blank=True)
+    ivs_stage_rtmps_endpoint = models.URLField(null=True, blank=True)
+    ivs_stage_whip_endpoint = models.URLField(null=True, blank=True)
+    host_token_expires_at = models.DateTimeField(null=True, blank=True)
     viewer_count = models.IntegerField(default=0)
     started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)

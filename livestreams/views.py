@@ -13,6 +13,7 @@ from .ivs_service import (
     ivs_is_enabled,
     provision_stream_resource,
 )
+from .ranking import rank_streams_for_discovery
 from core.pagination import StandardPagination
 
 
@@ -152,6 +153,24 @@ class LiveStreamViewSet(viewsets.ModelViewSet):
             queryset = queryset.order_by('-created_at')
 
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        status_filter = request.query_params.get('status')
+
+        if status_filter in ('live', 'scheduled'):
+            candidate_limit = min(max(int(request.query_params.get('limit', 20)), 20) * 8, 200)
+            ranked_items = rank_streams_for_discovery(queryset, request, candidate_limit=candidate_limit)
+        else:
+            ranked_items = queryset
+
+        page = self.paginate_queryset(ranked_items)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(ranked_items, many=True)
+        return Response(serializer.data)
     
     def perform_create(self, serializer):
         """Create stream with authenticated user"""
