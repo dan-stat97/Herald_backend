@@ -160,6 +160,7 @@ urlpatterns = [
     path('v1/posts/<uuid:pk>/bookmark/', BookmarkViewSet.as_view({'post': 'bookmark'}), name='post-bookmark'),
     path('v1/posts/<uuid:pk>/unbookmark/', BookmarkViewSet.as_view({'post': 'unbookmark'}), name='post-unbookmark'),
     path('v1/bookmarks/my/', BookmarkViewSet.as_view({'get': 'my_bookmarks'}), name='my-bookmarks'),
+    path('v1/bookmarks/clear-all/', BookmarkViewSet.as_view({'post': 'clear_all'}), name='bookmarks-clear-all'),
     
     # Leaderboard endpoints
     path('v1/leaderboard/reputation/', LeaderboardViewSet.as_view({'get': 'reputation'}), name='leaderboard-reputation'),

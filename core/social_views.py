@@ -198,3 +198,23 @@ class BookmarkViewSet(viewsets.GenericViewSet):
             return Response(serializer.data)
         except Exception:
             return Response({'error': 'Profile not found'}, status=404)
+
+    @action(detail=False, methods=['post'])
+    def clear_all(self, request):
+        """Remove all bookmarks for the current user."""
+        from posts.models import Post, PostBookmark
+        from django.db.models import F
+
+        try:
+            profile = self._get_profile(request)
+            post_ids = list(
+                PostBookmark.objects.filter(user=profile).values_list('post_id', flat=True)
+            )
+            if not post_ids:
+                return Response({'success': True, 'cleared_count': 0})
+
+            deleted, _ = PostBookmark.objects.filter(user=profile).delete()
+            Post.objects.filter(pk__in=post_ids).update(bookmarks_count=F('bookmarks_count') - 1)
+            return Response({'success': True, 'cleared_count': deleted})
+        except Exception:
+            return Response({'error': 'Profile not found'}, status=404)
