@@ -60,6 +60,45 @@ def _followed_author_ids(profile: UserProfile | None) -> set[str]:
     return {str(value) for value in following_auth_user_ids}
 
 
+def _follow_network_signals(profile: UserProfile | None):
+    if not profile:
+        return set(), {}
+
+    legacy = ensure_legacy_profile(profile)
+    if not legacy:
+        return set(), {}
+
+    followed_legacy_ids = list(
+        Follow.objects.filter(follower_id=legacy.id).values_list('following_id', flat=True)
+    )
+    if not followed_legacy_ids:
+        return set(), {}
+
+    followed_profiles = list(Profiles.objects.filter(id__in=followed_legacy_ids))
+    followed_auth_user_ids = [p.user_id for p in followed_profiles]
+    followed_user_profile_ids = list(
+        UserProfile.objects.filter(user_id_id__in=followed_auth_user_ids).values_list('id', flat=True)
+    )
+
+    liked_by_network_post_ids = set(
+        PostLike.objects.filter(user_id__in=followed_user_profile_ids).values_list('post_id', flat=True)
+    )
+
+    second_degree_counts: dict[str, int] = {}
+    if followed_legacy_ids:
+        second_degree_follow_rows = (
+            Follow.objects
+            .filter(follower_id__in=followed_legacy_ids)
+            .values_list('following_id', flat=True)
+        )
+        second_degree_profiles = Profiles.objects.filter(id__in=second_degree_follow_rows).values_list('user_id', flat=True)
+        for auth_user_id in second_degree_profiles:
+            key = str(auth_user_id)
+            second_degree_counts[key] = second_degree_counts.get(key, 0) + 1
+
+    return liked_by_network_post_ids, second_degree_counts
+
+
 def _engaged_author_ids(profile: UserProfile | None) -> tuple[set[str], set[str]]:
     if not profile:
         return set(), set()
@@ -89,7 +128,16 @@ def _live_author_ids() -> set[str]:
     }
 
 
-def _base_post_score(post: Post, *, followed_ids: set[str], engaged_author_ids: set[str], user_terms: set[str], live_author_ids: set[str]) -> float:
+def _base_post_score(
+    post: Post,
+    *,
+    followed_ids: set[str],
+    engaged_author_ids: set[str],
+    user_terms: set[str],
+    live_author_ids: set[str],
+    liked_by_network_post_ids: set,
+    second_degree_author_counts: dict[str, int],
+) -> float:
     author = getattr(post, 'author_id', None)
     author_auth_id = str(getattr(author, 'user_id_id', '') or '')
     post_terms = _post_terms(post)
@@ -112,6 +160,12 @@ def _base_post_score(post: Post, *, followed_ids: set[str], engaged_author_ids: 
 
     if author_auth_id and author_auth_id in engaged_author_ids:
         score += 18.0
+
+    if post.id in liked_by_network_post_ids:
+        score += 14.0
+
+    if author_auth_id and author_auth_id in second_degree_author_counts:
+        score += min(second_degree_author_counts[author_auth_id] * 3.2, 14.0)
 
     overlap = len(user_terms & post_terms)
     if overlap:
@@ -146,6 +200,7 @@ def rank_feed_posts(queryset, request, candidate_limit: int = 280):
     interest_terms = _safe_terms(getattr(profile, 'interests', []) if profile else [])
     user_terms = interest_terms | engaged_terms
     live_author_ids = _live_author_ids()
+    liked_by_network_post_ids, second_degree_author_counts = _follow_network_signals(profile)
 
     candidates = list(queryset[:candidate_limit])
     if not candidates:
@@ -159,6 +214,8 @@ def rank_feed_posts(queryset, request, candidate_limit: int = 280):
                 engaged_author_ids=engaged_author_ids,
                 user_terms=user_terms,
                 live_author_ids=live_author_ids,
+                liked_by_network_post_ids=liked_by_network_post_ids,
+                second_degree_author_counts=second_degree_author_counts,
             ),
             post,
         )

@@ -56,12 +56,13 @@ class PostSerializer(serializers.ModelSerializer):
     is_bookmarked = serializers.SerializerMethodField()
     profile_reposted = serializers.SerializerMethodField()
     profile_reposted_at = serializers.SerializerMethodField()
+    media_urls = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
         fields = [
             'id', 'author_id', 'username', 'display_name', 'avatar_url', 'is_verified', 'is_creator',
-            'content', 'media_url', 'media_type', 'likes_count',
+            'content', 'media_url', 'media_urls', 'media_type', 'likes_count',
             'comments_count', 'shares_count', 'bookmarks_count', 'httn_earned',
             'is_liked', 'is_reposted', 'is_bookmarked', 'profile_reposted', 'profile_reposted_at',
             'created_at', 'updated_at'
@@ -330,6 +331,14 @@ class PostSerializer(serializers.ModelSerializer):
         except Exception:
             return value
 
+    def get_media_urls(self, obj):
+        value = getattr(obj, 'media_urls', None) or []
+        if value:
+            return value
+        if getattr(obj, 'media_url', None):
+            return [obj.media_url]
+        return []
+
     def to_representation(self, instance):
         try:
             return super().to_representation(instance)
@@ -339,6 +348,7 @@ class PostSerializer(serializers.ModelSerializer):
                 'id': str(instance.id),
                 'content': instance.content,
                 'media_url': instance.media_url,
+                'media_urls': list(getattr(instance, 'media_urls', None) or ([instance.media_url] if instance.media_url else [])),
                 'media_type': instance.media_type,
                 'likes_count': instance.likes_count,
                 'comments_count': instance.comments_count,
@@ -362,6 +372,34 @@ class PostSerializer(serializers.ModelSerializer):
             return data
 
 class PostCreateSerializer(serializers.ModelSerializer):
+    media_urls = serializers.ListField(
+        child=serializers.URLField(),
+        required=False,
+        allow_empty=True,
+    )
+
     class Meta:
         model = Post
-        fields = ['content', 'media_url', 'media_type']
+        fields = ['content', 'media_url', 'media_urls', 'media_type']
+
+    def validate(self, attrs):
+        media_url = attrs.get('media_url')
+        media_urls = list(attrs.get('media_urls') or [])
+        media_type = attrs.get('media_type')
+
+        if media_url and not media_urls:
+            media_urls = [media_url]
+        elif media_urls and not media_url:
+            attrs['media_url'] = media_urls[0]
+
+        if len(media_urls) > 4:
+            raise serializers.ValidationError({'media_urls': 'You can attach up to 4 photos.'})
+
+        if media_type in {'video', 'reel'} and len(media_urls) > 1:
+            raise serializers.ValidationError({'media_urls': 'Videos can only be uploaded one at a time.'})
+
+        if media_urls and media_type in {None, ''}:
+            attrs['media_type'] = 'image'
+
+        attrs['media_urls'] = media_urls
+        return attrs

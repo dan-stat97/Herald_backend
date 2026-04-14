@@ -2,6 +2,7 @@
 from rest_framework import viewsets, permissions, filters
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework import status
 from django.db.models import F
 from .models import Post, PostLike, PostRepost, PostBookmark
 from .serializers import PostSerializer, PostCreateSerializer
@@ -74,6 +75,18 @@ class PostViewSet(viewsets.ModelViewSet):
 		if self.action in ['create', 'update', 'partial_update']:
 			return PostCreateSerializer
 		return PostSerializer
+
+	def create(self, request, *args, **kwargs):
+		serializer = self.get_serializer(data=request.data)
+		serializer.is_valid(raise_exception=True)
+		self.perform_create(serializer)
+		instance = serializer.instance
+		if instance is None:
+			return Response(serializer.data, status=status.HTTP_200_OK)
+		instance = Post.objects.select_related('author_id', 'author_id__user_id').get(pk=instance.pk)
+		response_serializer = PostSerializer(instance, context={**self.get_serializer_context(), '_post_list': [instance]})
+		headers = self.get_success_headers(response_serializer.data)
+		return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 	def perform_create(self, serializer):
 		try:
