@@ -290,8 +290,7 @@ class CommunityDetailView(views.APIView):
             return Response({'error': 'Name is required'}, status=400)
 
         community.save()
-        refreshed_m = CommunityMember.objects.filter(community=community, user=profile).first()
-        return Response(_serialize_community(community, refreshed_m))
+        return Response(_serialize_community(community, m))
 
 
 # ── Posts ─────────────────────────────────────────────────────────────────────
