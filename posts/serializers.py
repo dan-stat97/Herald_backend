@@ -91,6 +91,7 @@ class PostSerializer(serializers.ModelSerializer):
         if cached is not None:
             return cached
 
+        author_summary_only = bool(self.context.get('_author_summary_only'))
         posts = [post for post in self._get_posts_for_cache() if getattr(post, 'author_id', None)]
         author_profiles = []
         seen_author_ids = set()
@@ -103,38 +104,44 @@ class PostSerializer(serializers.ModelSerializer):
         author_auth_ids = [author.user_id_id for author in author_profiles if getattr(author, 'user_id_id', None)]
         post_ids = [post.id for post in posts]
 
-        legacy_profiles = Profiles.objects.filter(user_id__in=author_auth_ids)
-        legacy_by_auth_user_id = {legacy.user_id: legacy for legacy in legacy_profiles}
+        legacy_by_auth_user_id = {}
+        followers_count_by_legacy_id = {}
+        following_count_by_legacy_id = {}
+        posts_count_by_auth_user_id = {}
 
-        missing_legacy_auth_ids = [auth_id for auth_id in author_auth_ids if auth_id not in legacy_by_auth_user_id]
-        author_by_auth_user_id = {author.user_id_id: author for author in author_profiles}
-        for auth_id in missing_legacy_auth_ids:
-            author = author_by_auth_user_id.get(auth_id)
-            if not author:
-                continue
-            legacy = ensure_legacy_profile(author)
-            if legacy:
-                legacy_by_auth_user_id[auth_id] = legacy
+        if not author_summary_only:
+            legacy_profiles = Profiles.objects.filter(user_id__in=author_auth_ids)
+            legacy_by_auth_user_id = {legacy.user_id: legacy for legacy in legacy_profiles}
 
-        legacy_ids = [legacy.id for legacy in legacy_by_auth_user_id.values()]
-        followers_count_by_legacy_id = {
-            row['following_id']: row['count']
-            for row in Follow.objects.filter(following_id__in=legacy_ids)
-            .values('following_id')
-            .annotate(count=Count('id'))
-        }
-        following_count_by_legacy_id = {
-            row['follower_id']: row['count']
-            for row in Follow.objects.filter(follower_id__in=legacy_ids)
-            .values('follower_id')
-            .annotate(count=Count('id'))
-        }
-        posts_count_by_auth_user_id = {
-            row['author_id']: row['count']
-            for row in Post.objects.filter(author_id__in=author_auth_ids)
-            .values('author_id')
-            .annotate(count=Count('id'))
-        }
+            missing_legacy_auth_ids = [auth_id for auth_id in author_auth_ids if auth_id not in legacy_by_auth_user_id]
+            author_by_auth_user_id = {author.user_id_id: author for author in author_profiles}
+            for auth_id in missing_legacy_auth_ids:
+                author = author_by_auth_user_id.get(auth_id)
+                if not author:
+                    continue
+                legacy = ensure_legacy_profile(author)
+                if legacy:
+                    legacy_by_auth_user_id[auth_id] = legacy
+
+            legacy_ids = [legacy.id for legacy in legacy_by_auth_user_id.values()]
+            followers_count_by_legacy_id = {
+                row['following_id']: row['count']
+                for row in Follow.objects.filter(following_id__in=legacy_ids)
+                .values('following_id')
+                .annotate(count=Count('id'))
+            }
+            following_count_by_legacy_id = {
+                row['follower_id']: row['count']
+                for row in Follow.objects.filter(follower_id__in=legacy_ids)
+                .values('follower_id')
+                .annotate(count=Count('id'))
+            }
+            posts_count_by_auth_user_id = {
+                row['author_id']: row['count']
+                for row in Post.objects.filter(author_id__in=author_auth_ids)
+                .values('author_id')
+                .annotate(count=Count('id'))
+            }
 
         liked_post_ids = set()
         reposted_post_ids = set()
@@ -146,7 +153,7 @@ class PostSerializer(serializers.ModelSerializer):
             bookmarked_post_ids = set(PostBookmark.objects.filter(user=profile, post_id__in=post_ids).values_list('post_id', flat=True))
 
         is_following_by_author_id = {}
-        if profile and author_auth_ids:
+        if profile and author_auth_ids and not author_summary_only:
             follower_legacy = ensure_legacy_profile(profile)
             if follower_legacy:
                 followed_legacy_ids = set(
@@ -161,8 +168,6 @@ class PostSerializer(serializers.ModelSerializer):
 
         author_payload_by_author_id = {}
         for author in author_profiles:
-            legacy = legacy_by_auth_user_id.get(author.user_id_id)
-            legacy_id = legacy.id if legacy else None
             author_payload_by_author_id[author.id] = {
                 'id': str(author.id),
                 'user_id': author.user_id_id,
@@ -172,9 +177,9 @@ class PostSerializer(serializers.ModelSerializer):
                 'email': author.email,
                 'avatar_url': author.avatar_url,
                 'bio': author.bio,
-                'followers_count': followers_count_by_legacy_id.get(legacy_id, 0) if legacy_id else 0,
-                'following_count': following_count_by_legacy_id.get(legacy_id, 0) if legacy_id else 0,
-                'posts_count': posts_count_by_auth_user_id.get(author.user_id_id, 0),
+                'followers_count': 0 if author_summary_only else followers_count_by_legacy_id.get(getattr(legacy_by_auth_user_id.get(author.user_id_id), 'id', None), 0),
+                'following_count': 0 if author_summary_only else following_count_by_legacy_id.get(getattr(legacy_by_auth_user_id.get(author.user_id_id), 'id', None), 0),
+                'posts_count': 0 if author_summary_only else posts_count_by_auth_user_id.get(author.user_id_id, 0),
                 'is_following': is_following_by_author_id.get(author.id, False),
                 'notifications_enabled': author.notifications_enabled,
                 'privacy_level': author.privacy_level,

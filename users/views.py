@@ -649,7 +649,7 @@ class UserPostsView(views.APIView):
             serializer = PostSerializer(
                 page_posts,
                 many=True,
-                context={'request': request, '_post_list': page_posts},
+                context={'request': request, '_post_list': page_posts, '_author_summary_only': True},
             )
             payload = serializer.data
             cache.set(cache_key, payload, 30)

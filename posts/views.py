@@ -100,7 +100,7 @@ class PostViewSet(viewsets.ModelViewSet):
 				serializer = self.get_serializer(
 					page_items,
 					many=True,
-					context={**self.get_serializer_context(), '_post_list': page_items},
+					context={**self.get_serializer_context(), '_post_list': page_items, '_author_summary_only': True},
 				)
 				payload = {
 					'data': serializer.data,
@@ -118,13 +118,13 @@ class PostViewSet(viewsets.ModelViewSet):
 			page = self.paginate_queryset(ranked_items)
 			if page is not None:
 				page_items = list(page)
-				serializer = self.get_serializer(page_items, many=True, context={**self.get_serializer_context(), '_post_list': page_items})
+				serializer = self.get_serializer(page_items, many=True, context={**self.get_serializer_context(), '_post_list': page_items, '_author_summary_only': True})
 				response = self.get_paginated_response(serializer.data)
 				if cache_key:
 					cache.set(cache_key, response.data, 30)
 				return response
 			items = list(ranked_items)
-			serializer = self.get_serializer(items, many=True, context={**self.get_serializer_context(), '_post_list': items})
+			serializer = self.get_serializer(items, many=True, context={**self.get_serializer_context(), '_post_list': items, '_author_summary_only': True})
 			payload = serializer.data
 			if cache_key:
 				cache.set(cache_key, payload, 30)
@@ -280,10 +280,10 @@ class PostViewSet(viewsets.ModelViewSet):
 		page = self.paginate_queryset(posts)
 		if page is not None:
 			page_items = list(page)
-			serializer = PostSerializer(page_items, many=True, context={**self.get_serializer_context(), '_post_list': page_items})
+			serializer = PostSerializer(page_items, many=True, context={**self.get_serializer_context(), '_post_list': page_items, '_author_summary_only': True})
 			return self.get_paginated_response(serializer.data)
 		items = list(posts)
-		serializer = PostSerializer(items, many=True, context={**self.get_serializer_context(), '_post_list': items})
+		serializer = PostSerializer(items, many=True, context={**self.get_serializer_context(), '_post_list': items, '_author_summary_only': True})
 		return Response(serializer.data)
 
 	@action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
@@ -322,7 +322,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		if not post_items:
 			post_items = _fetch()
 
-		serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items})
+		serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items, '_author_summary_only': True})
 		payload = {'data': serializer.data, 'pagination': {'page': 1, 'limit': limit, 'total': len(post_items), 'total_pages': 1}}
 		cache.set(cache_key, payload, 30)
 		return Response(payload)
@@ -387,7 +387,7 @@ class PostViewSet(viewsets.ModelViewSet):
 			post_items = list(posts_qs[offset:offset + limit + 1])
 			has_more = len(post_items) > limit
 			post_items = post_items[:limit]
-			serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items})
+			serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items, '_author_summary_only': True})
 			payload = {
 				'data': serializer.data,
 				'pagination': {'page': page, 'limit': limit, 'has_more': has_more},
@@ -407,7 +407,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		post_items = list(posts_qs[offset:offset + limit + 1])
 		has_more = len(post_items) > limit
 		post_items = post_items[:limit]
-		serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items})
+		serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items, '_author_summary_only': True})
 		payload = {
 			'data': serializer.data,
 			'pagination': {'page': page, 'limit': limit, 'has_more': has_more},
