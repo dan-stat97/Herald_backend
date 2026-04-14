@@ -19,6 +19,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .models import User as UserProfile
 from .serializers import UserProfileSerializer, UserReplySerializer, UserSignupSerializer
+from posts.cache_utils import get_post_timeline_cache_version
 from posts.models import Comment, Post, PostRepost
 
 AuthUser = get_user_model()
@@ -604,7 +605,8 @@ class UserPostsView(views.APIView):
             if request.user.is_authenticated
             else 'anon'
         )
-        cache_key = f"profile-posts:{profile.id}:tab:{tab}:limit:{limit}:{viewer_scope}:v2"
+        cache_version = get_post_timeline_cache_version()
+        cache_key = f"profile-posts:{profile.id}:tab:{tab}:limit:{limit}:{viewer_scope}:v{cache_version}"
         cached_payload = cache.get(cache_key)
         if cached_payload is not None:
             return Response(cached_payload)

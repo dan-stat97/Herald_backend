@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from rest_framework import status
 from django.core.cache import cache
 from django.db.models import F
+from .cache_utils import bump_post_timeline_cache_version, get_post_timeline_cache_version
 from .models import Post, PostLike, PostRepost, PostBookmark
 from .serializers import PostSerializer, PostCreateSerializer
 from .ranking import rank_feed_posts
@@ -66,9 +67,10 @@ class PostViewSet(viewsets.ModelViewSet):
 			is_default_feed = not manual_sort and not search
 			cache_key = None
 			user_scope = None
+			cache_version = get_post_timeline_cache_version()
 			if is_default_feed:
 				user_scope = f"user:{request.user.id}" if getattr(request.user, 'is_authenticated', False) else 'anon'
-				cache_key = f"feed:page:{page_number}:limit:{min(request_limit, 100)}:{user_scope}:v2"
+				cache_key = f"feed:page:{page_number}:limit:{min(request_limit, 100)}:{user_scope}:v{cache_version}"
 				cached_payload = cache.get(cache_key)
 				if cached_payload is not None:
 					return Response(cached_payload)
@@ -78,7 +80,7 @@ class PostViewSet(viewsets.ModelViewSet):
 			if manual_sort or search:
 				ranked_items = queryset
 			else:
-				ranked_ids_cache_key = f"feed:ranked-ids:{user_scope}:limit:{candidate_limit}:v1"
+				ranked_ids_cache_key = f"feed:ranked-ids:{user_scope}:limit:{candidate_limit}:v{cache_version}"
 				ranked_ids = cache.get(ranked_ids_cache_key)
 				if ranked_ids is None:
 					ranked_items = rank_feed_posts(queryset, request, candidate_limit=candidate_limit)
@@ -194,6 +196,7 @@ class PostViewSet(viewsets.ModelViewSet):
 				wallet = Wallet.objects.select_for_update().get(user_id=profile)
 				wallet.httn_points += 25
 				wallet.save(update_fields=['httn_points', 'updated_at'])
+				bump_post_timeline_cache_version()
 			
 		except UserProfile.DoesNotExist:
 			from rest_framework.exceptions import ValidationError
@@ -214,6 +217,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		_, created = PostLike.objects.get_or_create(post=post, user=profile)
 		if created:
 			Post.objects.filter(pk=post.pk).update(likes_count=F('likes_count') + 1)
+			bump_post_timeline_cache_version()
 		post.refresh_from_db(fields=['likes_count'])
 		return Response({'success': True, 'liked': True, 'likes_count': post.likes_count})
 
@@ -228,6 +232,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		deleted, _ = PostLike.objects.filter(post=post, user=profile).delete()
 		if deleted:
 			Post.objects.filter(pk=post.pk).update(likes_count=F('likes_count') - 1)
+			bump_post_timeline_cache_version()
 		post.refresh_from_db(fields=['likes_count'])
 		return Response({'success': True, 'liked': False, 'likes_count': post.likes_count})
 
@@ -243,6 +248,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		_, created = PostRepost.objects.get_or_create(post=post, user=profile)
 		if created:
 			Post.objects.filter(pk=post.pk).update(shares_count=F('shares_count') + 1)
+			bump_post_timeline_cache_version()
 		post.refresh_from_db(fields=['shares_count'])
 		return Response({'success': True, 'reposted': True, 'shares_count': post.shares_count})
 
@@ -257,6 +263,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		_, created = PostBookmark.objects.get_or_create(post=post, user=profile)
 		if created:
 			Post.objects.filter(pk=post.pk).update(bookmarks_count=F('bookmarks_count') + 1)
+			bump_post_timeline_cache_version()
 		post.refresh_from_db(fields=['bookmarks_count'])
 		return Response({'success': True, 'bookmarked': True, 'bookmarks_count': post.bookmarks_count})
 
@@ -271,6 +278,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		deleted, _ = PostBookmark.objects.filter(post=post, user=profile).delete()
 		if deleted:
 			Post.objects.filter(pk=post.pk).update(bookmarks_count=F('bookmarks_count') - 1)
+			bump_post_timeline_cache_version()
 		post.refresh_from_db(fields=['bookmarks_count'])
 		return Response({'success': True, 'bookmarked': False, 'bookmarks_count': post.bookmarks_count})
 
@@ -294,7 +302,8 @@ class PostViewSet(viewsets.ModelViewSet):
 		from django.db.models import F, ExpressionWrapper, IntegerField
 
 		limit = min(int(request.query_params.get('limit', 20)), 100)
-		cache_key = f"posts:trending:limit:{limit}:v2"
+		cache_version = get_post_timeline_cache_version()
+		cache_key = f"posts:trending:limit:{limit}:v{cache_version}"
 		cached_payload = cache.get(cache_key)
 		if cached_payload is not None:
 			return Response(cached_payload)
@@ -334,7 +343,8 @@ class PostViewSet(viewsets.ModelViewSet):
 
 		limit = min(int(request.query_params.get('limit', 20)), 100)
 		page = max(int(request.query_params.get('page', 1)), 1)
-		cache_key = f"posts:following:user:{request.user.id}:page:{page}:limit:{limit}:v2"
+		cache_version = get_post_timeline_cache_version()
+		cache_key = f"posts:following:user:{request.user.id}:page:{page}:limit:{limit}:v{cache_version}"
 		cached_payload = cache.get(cache_key)
 		if cached_payload is not None:
 			return Response(cached_payload)
