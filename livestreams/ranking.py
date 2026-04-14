@@ -1,5 +1,6 @@
 import math
 import re
+from functools import lru_cache
 
 from django.db import connection
 from django.db.models import Count, IntegerField, Value
@@ -10,6 +11,12 @@ from users.legacy_profiles import ensure_legacy_profile
 from users.models import User as UserProfile
 
 from .models import LiveStream
+
+
+@lru_cache(maxsize=1)
+def _existing_tables() -> frozenset:
+    """Cache the DB table list once per process lifetime — tables never change at runtime."""
+    return frozenset(connection.introspection.table_names())
 
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9_#']+")
@@ -125,10 +132,10 @@ def rank_streams_for_discovery(queryset, request, candidate_limit: int = 180):
     followed_ids = _followed_author_ids(profile)
     interest_terms = _interest_terms(profile)
 
-    existing_tables = set(connection.introspection.table_names())
+    tables = _existing_tables()
     annotated_queryset = queryset.select_related('user')
 
-    if 'stream_chat_messages' in existing_tables:
+    if 'stream_chat_messages' in tables:
         annotated_queryset = annotated_queryset.annotate(
             chat_activity=Count('chat_messages', distinct=True)
         )
@@ -137,7 +144,7 @@ def rank_streams_for_discovery(queryset, request, candidate_limit: int = 180):
             chat_activity=Value(0, output_field=IntegerField())
         )
 
-    if 'stream_donations' in existing_tables:
+    if 'stream_donations' in tables:
         annotated_queryset = annotated_queryset.annotate(
             donation_activity=Count('donations', distinct=True)
         )
