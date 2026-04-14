@@ -1,7 +1,8 @@
 import math
 import re
 
-from django.db.models import Count
+from django.db import connection
+from django.db.models import Count, IntegerField, Value
 from django.utils import timezone
 
 from core.models import Follow, Profiles
@@ -124,11 +125,29 @@ def rank_streams_for_discovery(queryset, request, candidate_limit: int = 180):
     followed_ids = _followed_author_ids(profile)
     interest_terms = _interest_terms(profile)
 
+    existing_tables = set(connection.introspection.table_names())
+    annotated_queryset = queryset.select_related('user')
+
+    if 'stream_chat_messages' in existing_tables:
+        annotated_queryset = annotated_queryset.annotate(
+            chat_activity=Count('chat_messages', distinct=True)
+        )
+    else:
+        annotated_queryset = annotated_queryset.annotate(
+            chat_activity=Value(0, output_field=IntegerField())
+        )
+
+    if 'stream_donations' in existing_tables:
+        annotated_queryset = annotated_queryset.annotate(
+            donation_activity=Count('donations', distinct=True)
+        )
+    else:
+        annotated_queryset = annotated_queryset.annotate(
+            donation_activity=Value(0, output_field=IntegerField())
+        )
+
     candidates = list(
-        queryset.select_related('user').annotate(
-            chat_activity=Count('chat_messages', distinct=True),
-            donation_activity=Count('donations', distinct=True),
-        )[:candidate_limit]
+        annotated_queryset[:candidate_limit]
     )
     if not candidates:
         return []
