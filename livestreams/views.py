@@ -5,6 +5,7 @@ from rest_framework import status
 from rest_framework import serializers
 from datetime import timedelta
 import uuid
+from django.core.cache import cache
 from django.utils import timezone
 from .models import LiveStream, StreamChatMessage, StreamDonation, StreamViewerEvent
 from .ivs_service import (
@@ -157,9 +158,24 @@ class LiveStreamViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         status_filter = request.query_params.get('status')
+        try:
+            page_number = max(int(request.query_params.get('page', 1)), 1)
+        except (TypeError, ValueError):
+            page_number = 1
+        try:
+            request_limit = max(int(request.query_params.get('limit', 20)), 1)
+        except (TypeError, ValueError):
+            request_limit = 20
+
+        cache_key = None
+        if status_filter in ('live', 'scheduled'):
+            cache_key = f"streams:{status_filter}:page:{page_number}:limit:{min(request_limit, 100)}:v2"
+            cached_payload = cache.get(cache_key)
+            if cached_payload is not None:
+                return Response(cached_payload)
 
         if status_filter in ('live', 'scheduled'):
-            candidate_limit = min(max(int(request.query_params.get('limit', 20)), 20) * 8, 200)
+            candidate_limit = min(max(request_limit, 20) * 6, 160)
             ranked_items = rank_streams_for_discovery(queryset, request, candidate_limit=candidate_limit)
         else:
             ranked_items = queryset
@@ -167,10 +183,16 @@ class LiveStreamViewSet(viewsets.ModelViewSet):
         page = self.paginate_queryset(ranked_items)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+            response = self.get_paginated_response(serializer.data)
+            if cache_key:
+                cache.set(cache_key, response.data, 20)
+            return response
 
         serializer = self.get_serializer(ranked_items, many=True)
-        return Response(serializer.data)
+        payload = serializer.data
+        if cache_key:
+            cache.set(cache_key, payload, 20)
+        return Response(payload)
     
     def perform_create(self, serializer):
         """Create stream with authenticated user"""

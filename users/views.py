@@ -6,6 +6,7 @@ from urllib import request as urllib_request
 
 from django.contrib.auth import authenticate, logout
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.db import IntegrityError
 from django.db.models import DateTimeField, Exists, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
@@ -598,6 +599,15 @@ class UserPostsView(views.APIView):
             limit = max(1, min(int(request.query_params.get('limit', 20)), 50))
         except (TypeError, ValueError):
             limit = 20
+        viewer_scope = (
+            f"user:{request.user.id}"
+            if request.user.is_authenticated
+            else 'anon'
+        )
+        cache_key = f"profile-posts:{profile.id}:tab:{tab}:limit:{limit}:{viewer_scope}:v2"
+        cached_payload = cache.get(cache_key)
+        if cached_payload is not None:
+            return Response(cached_payload)
         base_posts = Post.objects.select_related('author_id', 'author_id__user_id')
 
         reposted_at_subquery = (
@@ -641,7 +651,9 @@ class UserPostsView(views.APIView):
                 many=True,
                 context={'request': request, '_post_list': page_posts},
             )
-            return Response(serializer.data)
+            payload = serializer.data
+            cache.set(cache_key, payload, 30)
+            return Response(payload)
         except Exception as exc:
             print(f'Error serializing posts: {exc}')
             return Response([])

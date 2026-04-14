@@ -2,6 +2,9 @@
 
 import os
 from pathlib import Path
+from datetime import timedelta
+
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -10,7 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-dev-key-change-in-production')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+DEBUG = os.environ.get('DEBUG', 'False' if os.environ.get('RENDER') else 'True') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
 
@@ -75,15 +78,13 @@ WSGI_APPLICATION = 'herald_backend.wsgi.application'
 
 # ✅ DATABASE CONFIGURATION - USE THE WORKING CONNECTION
 # Use SQLite for local development, PostgreSQL for production
-import os
-
 if os.environ.get('DATABASE_URL'):
     # Production: Use PostgreSQL from environment
-    import dj_database_url
     DATABASES = {
         'default': dj_database_url.config(
             default=os.environ.get('DATABASE_URL'),
-            conn_max_age=600
+            conn_max_age=int(os.environ.get('DB_CONN_MAX_AGE', '600')),
+            conn_health_checks=True,
         )
     }
 else:
@@ -119,6 +120,15 @@ USE_TZ = True
 # Media files configuration (local fallback for dev)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Short-lived in-process cache for feed/live ranking and hot API surfaces.
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'herald-social-backend',
+        'TIMEOUT': int(os.environ.get('DEFAULT_CACHE_TIMEOUT', '60')),
+    }
+}
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
@@ -193,13 +203,10 @@ REST_FRAMEWORK = {
 }
 
 # JWT settings
-from datetime import timedelta
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
-
-import dj_database_url
 
 # Static files configuration for production
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')

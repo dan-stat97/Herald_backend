@@ -2,6 +2,7 @@ import math
 import re
 from collections import Counter
 
+from django.core.cache import cache
 from django.utils import timezone
 
 from core.models import Follow, Profiles
@@ -13,6 +14,15 @@ from .models import Post, PostBookmark, PostLike, PostRepost
 
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9_#']+")
+
+
+def _cache_fetch(key: str, ttl: int, builder):
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    value = builder()
+    cache.set(key, value, ttl)
+    return value
 
 
 def _safe_terms(values) -> set[str]:
@@ -51,41 +61,43 @@ def _get_profile(user):
 def _followed_author_ids(profile: UserProfile | None) -> set[str]:
     if not profile:
         return set()
-    legacy = ensure_legacy_profile(profile)
-    if not legacy:
-        return set()
-    following_auth_user_ids = Profiles.objects.filter(
-        id__in=Follow.objects.filter(follower_id=legacy.id).values_list('following_id', flat=True)
-    ).values_list('user_id', flat=True)
-    return {str(value) for value in following_auth_user_ids}
+    def builder():
+        legacy = ensure_legacy_profile(profile)
+        if not legacy:
+            return set()
+        following_auth_user_ids = Profiles.objects.filter(
+            id__in=Follow.objects.filter(follower_id=legacy.id).values_list('following_id', flat=True)
+        ).values_list('user_id', flat=True)
+        return {str(value) for value in following_auth_user_ids}
+
+    return _cache_fetch(f'feed:followed-authors:{profile.id}', 60, builder)
 
 
 def _follow_network_signals(profile: UserProfile | None):
     if not profile:
         return set(), {}
+    def builder():
+        legacy = ensure_legacy_profile(profile)
+        if not legacy:
+            return set(), {}
 
-    legacy = ensure_legacy_profile(profile)
-    if not legacy:
-        return set(), {}
+        followed_legacy_ids = list(
+            Follow.objects.filter(follower_id=legacy.id).values_list('following_id', flat=True)
+        )
+        if not followed_legacy_ids:
+            return set(), {}
 
-    followed_legacy_ids = list(
-        Follow.objects.filter(follower_id=legacy.id).values_list('following_id', flat=True)
-    )
-    if not followed_legacy_ids:
-        return set(), {}
+        followed_profiles = list(Profiles.objects.filter(id__in=followed_legacy_ids))
+        followed_auth_user_ids = [p.user_id for p in followed_profiles]
+        followed_user_profile_ids = list(
+            UserProfile.objects.filter(user_id_id__in=followed_auth_user_ids).values_list('id', flat=True)
+        )
 
-    followed_profiles = list(Profiles.objects.filter(id__in=followed_legacy_ids))
-    followed_auth_user_ids = [p.user_id for p in followed_profiles]
-    followed_user_profile_ids = list(
-        UserProfile.objects.filter(user_id_id__in=followed_auth_user_ids).values_list('id', flat=True)
-    )
+        liked_by_network_post_ids = set(
+            PostLike.objects.filter(user_id__in=followed_user_profile_ids).values_list('post_id', flat=True)
+        )
 
-    liked_by_network_post_ids = set(
-        PostLike.objects.filter(user_id__in=followed_user_profile_ids).values_list('post_id', flat=True)
-    )
-
-    second_degree_counts: dict[str, int] = {}
-    if followed_legacy_ids:
+        second_degree_counts: dict[str, int] = {}
         second_degree_follow_rows = (
             Follow.objects
             .filter(follower_id__in=followed_legacy_ids)
@@ -96,36 +108,44 @@ def _follow_network_signals(profile: UserProfile | None):
             key = str(auth_user_id)
             second_degree_counts[key] = second_degree_counts.get(key, 0) + 1
 
-    return liked_by_network_post_ids, second_degree_counts
+        return liked_by_network_post_ids, second_degree_counts
+
+    return _cache_fetch(f'feed:network-signals:{profile.id}', 90, builder)
 
 
 def _engaged_author_ids(profile: UserProfile | None) -> tuple[set[str], set[str]]:
     if not profile:
         return set(), set()
+    def builder():
+        recent_likes = PostLike.objects.filter(user=profile).select_related('post__author_id')[:120]
+        recent_reposts = PostRepost.objects.filter(user=profile).select_related('post__author_id')[:120]
+        recent_bookmarks = PostBookmark.objects.filter(user=profile).select_related('post__author_id')[:120]
 
-    recent_likes = PostLike.objects.filter(user=profile).select_related('post__author_id')[:120]
-    recent_reposts = PostRepost.objects.filter(user=profile).select_related('post__author_id')[:120]
-    recent_bookmarks = PostBookmark.objects.filter(user=profile).select_related('post__author_id')[:120]
+        author_ids: set[str] = set()
+        term_bag: list[str] = []
 
-    author_ids: set[str] = set()
-    term_bag: list[str] = []
+        for relation in [*recent_likes, *recent_reposts, *recent_bookmarks]:
+            post = getattr(relation, 'post', None)
+            author = getattr(post, 'author_id', None)
+            if author and getattr(author, 'user_id_id', None):
+                author_ids.add(str(author.user_id_id))
+            if post:
+                term_bag.extend(_post_terms(post))
 
-    for relation in [*recent_likes, *recent_reposts, *recent_bookmarks]:
-        post = getattr(relation, 'post', None)
-        author = getattr(post, 'author_id', None)
-        if author and getattr(author, 'user_id_id', None):
-            author_ids.add(str(author.user_id_id))
-        if post:
-            term_bag.extend(_post_terms(post))
+        return author_ids, set(term_bag)
 
-    return author_ids, set(term_bag)
+    return _cache_fetch(f'feed:engaged-authors:{profile.id}', 90, builder)
 
 
 def _live_author_ids() -> set[str]:
-    return {
-        str(value)
-        for value in LiveStream.objects.filter(status='live').values_list('user__user_id', flat=True)
-    }
+    return _cache_fetch(
+        'feed:live-authors',
+        20,
+        lambda: {
+            str(value)
+            for value in LiveStream.objects.filter(status='live').values_list('user__user_id', flat=True)
+        },
+    )
 
 
 def _base_post_score(

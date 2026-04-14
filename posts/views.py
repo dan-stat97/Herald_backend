@@ -256,6 +256,10 @@ class PostViewSet(viewsets.ModelViewSet):
 		from django.db.models import F, ExpressionWrapper, IntegerField
 
 		limit = min(int(request.query_params.get('limit', 20)), 100)
+		cache_key = f"posts:trending:limit:{limit}:v2"
+		cached_payload = cache.get(cache_key)
+		if cached_payload is not None:
+			return Response(cached_payload)
 		cutoff = timezone.now() - timedelta(hours=48)
 
 		def _fetch(extra_filter=None):
@@ -281,7 +285,9 @@ class PostViewSet(viewsets.ModelViewSet):
 			post_items = _fetch()
 
 		serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items})
-		return Response({'data': serializer.data, 'pagination': {'page': 1, 'limit': limit, 'total': len(post_items), 'total_pages': 1}})
+		payload = {'data': serializer.data, 'pagination': {'page': 1, 'limit': limit, 'total': len(post_items), 'total_pages': 1}}
+		cache.set(cache_key, payload, 30)
+		return Response(payload)
 
 	@action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
 	def following(self, request):
@@ -290,13 +296,19 @@ class PostViewSet(viewsets.ModelViewSet):
 
 		limit = min(int(request.query_params.get('limit', 20)), 100)
 		page = max(int(request.query_params.get('page', 1)), 1)
+		cache_key = f"posts:following:user:{request.user.id}:page:{page}:limit:{limit}:v2"
+		cached_payload = cache.get(cache_key)
+		if cached_payload is not None:
+			return Response(cached_payload)
 		offset = (page - 1) * limit
 		default_usernames = ['heraldnews', 'heraldtoday', 'heraldworlddesk', 'heraldprayerdesk', 'heraldworship']
 
 		try:
 			profile = UserProfile.objects.get(user_id=request.user)
 		except UserProfile.DoesNotExist:
-			return Response({'data': [], 'pagination': {'page': 1, 'limit': limit, 'has_more': False}})
+			payload = {'data': [], 'pagination': {'page': 1, 'limit': limit, 'has_more': False}}
+			cache.set(cache_key, payload, 20)
+			return Response(payload)
 
 		# Look up legacy profile without writing (ensure_legacy_profile does a
 		# get_or_create + possible UPDATE on every request — too expensive here).
@@ -319,11 +331,13 @@ class PostViewSet(viewsets.ModelViewSet):
 				.values_list('id', flat=True)
 			)
 			if not default_ids:
-				return Response({
+				payload = {
 					'data': [],
 					'pagination': {'page': 1, 'limit': limit, 'has_more': False},
 					'message': 'Follow some users to see their posts here.',
-				})
+				}
+				cache.set(cache_key, payload, 20)
+				return Response(payload)
 
 			posts_qs = (
 				Post.objects
@@ -336,12 +350,14 @@ class PostViewSet(viewsets.ModelViewSet):
 			has_more = len(post_items) > limit
 			post_items = post_items[:limit]
 			serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items})
-			return Response({
+			payload = {
 				'data': serializer.data,
 				'pagination': {'page': page, 'limit': limit, 'has_more': has_more},
 				'message': 'Showing official Herald accounts until you follow people.',
 				'is_default_feed': True,
-			})
+			}
+			cache.set(cache_key, payload, 20)
+			return Response(payload)
 
 		posts_qs = (
 			Post.objects
@@ -354,7 +370,9 @@ class PostViewSet(viewsets.ModelViewSet):
 		has_more = len(post_items) > limit
 		post_items = post_items[:limit]
 		serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items})
-		return Response({
+		payload = {
 			'data': serializer.data,
 			'pagination': {'page': page, 'limit': limit, 'has_more': has_more},
-		})
+		}
+		cache.set(cache_key, payload, 20)
+		return Response(payload)

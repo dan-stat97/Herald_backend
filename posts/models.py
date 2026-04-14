@@ -14,9 +14,17 @@ class Post(models.Model):
 	comments_count = models.IntegerField(default=0)
 	shares_count = models.IntegerField(default=0)
 	bookmarks_count = models.IntegerField(default=0)
+	views_count = models.IntegerField(default=0)
 	httn_earned = models.IntegerField(default=0)
 	created_at = models.DateTimeField(auto_now_add=True)
 	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ['-created_at']
+		indexes = [
+			models.Index(fields=['-created_at'], name='posts_created_idx'),
+			models.Index(fields=['author_id', '-created_at'], name='posts_author_created_idx'),
+		]
 
 	def __str__(self):
 		return f"{self.author_id.username}: {self.content[:30]}"
@@ -43,6 +51,9 @@ class PostLike(models.Model):
 
 	class Meta:
 		unique_together = ('post', 'user')
+		indexes = [
+			models.Index(fields=['user', '-created_at'], name='postlike_user_created_idx'),
+		]
 
 	def __str__(self):
 		return f"{self.user} liked {self.post_id}"
@@ -56,6 +67,9 @@ class PostRepost(models.Model):
 
 	class Meta:
 		unique_together = ('post', 'user')
+		indexes = [
+			models.Index(fields=['user', '-created_at'], name='postrepost_user_created_idx'),
+		]
 
 	def __str__(self):
 		return f"{self.user} reposted {self.post_id}"
@@ -69,6 +83,9 @@ class PostBookmark(models.Model):
 
 	class Meta:
 		unique_together = ('post', 'user')
+		indexes = [
+			models.Index(fields=['user', '-created_at'], name='postbookmark_user_created_idx'),
+		]
 
 	def __str__(self):
 		return f"{self.user} bookmarked {self.post_id}"

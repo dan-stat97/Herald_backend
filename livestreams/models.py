@@ -40,6 +40,11 @@ class LiveStream(models.Model):
     class Meta:
         db_table = 'live_streams'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', '-created_at'], name='streams_status_created_idx'),
+            models.Index(fields=['status', 'scheduled_for'], name='streams_status_sched_idx'),
+            models.Index(fields=['user', 'status'], name='streams_user_status_idx'),
+        ]
     
     def __str__(self):
         return f"{self.title} - {self.status}"
@@ -55,6 +60,9 @@ class StreamChatMessage(models.Model):
     class Meta:
         db_table = 'stream_chat_messages'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['stream', '-created_at'], name='stream_chat_stream_created_idx'),
+        ]
 
     def __str__(self):
         return f"{self.user.username}: {self.message[:30]}"
@@ -78,6 +86,9 @@ class StreamDonation(models.Model):
     class Meta:
         db_table = 'stream_donations'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['stream', '-created_at'], name='stream_donation_stream_created_idx'),
+        ]
 
     def __str__(self):
         return f"{self.user.username} donated {self.amount} {self.currency}"
@@ -98,6 +109,10 @@ class StreamViewerEvent(models.Model):
     class Meta:
         db_table = 'stream_viewer_events'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['stream', '-created_at'], name='stream_viewer_stream_created_idx'),
+            models.Index(fields=['user', '-created_at'], name='stream_viewer_user_created_idx'),
+        ]
 
     def __str__(self):
         return f"{self.user.username} {self.event_type} {self.stream.title}"
