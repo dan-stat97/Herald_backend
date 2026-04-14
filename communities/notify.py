@@ -115,3 +115,46 @@ def notify_post_commented(post, commenter, comment_preview):
         )
     except Exception as exc:
         logger.warning('notify_post_commented failed: %s', exc)
+
+
+# ── Community invites ─────────────────────────────────────────────────────────
+
+def notify_invite_sent(invite):
+    """Notify the invited user that they have been invited to join a community."""
+    try:
+        community = invite.community
+        _create(
+            user=invite.invited_user,
+            notification_type='system',
+            title='Community invitation',
+            message=(
+                f'{invite.invited_by.display_name or invite.invited_by.username} '
+                f'invited you to join {community.name}'
+            ),
+            actor=invite.invited_by,
+            resource_type='community_invite',
+            resource_id=invite.id,
+        )
+    except Exception as exc:
+        logger.warning('notify_invite_sent failed: %s', exc)
+
+
+def notify_invite_responded(invite):
+    """Notify the admin who sent the invite that it was accepted or declined."""
+    try:
+        accepted = invite.status == 'accepted'
+        community = invite.community
+        _create(
+            user=invite.invited_by,
+            notification_type='system',
+            title=f'Invite {"accepted" if accepted else "declined"}',
+            message=(
+                f'{invite.invited_user.display_name or invite.invited_user.username} '
+                f'{"accepted" if accepted else "declined"} your invitation to {community.name}'
+            ),
+            actor=invite.invited_user,
+            resource_type='community',
+            resource_id=community.id,
+        )
+    except Exception as exc:
+        logger.warning('notify_invite_responded failed: %s', exc)

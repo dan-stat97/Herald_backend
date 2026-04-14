@@ -5,12 +5,13 @@ from rest_framework.response import Response
 
 from .models import (
     Community, CommunityMember, CommunityPost, CommunityPostLike,
-    CommunityPostComment, CommunityJoinRequest,
+    CommunityPostComment, CommunityJoinRequest, CommunityInvite,
 )
 from users.models import User
 from .notify import (
     notify_join_request_received, notify_join_request_reviewed,
     notify_post_liked, notify_post_commented,
+    notify_invite_sent, notify_invite_responded,
 )
 
 
@@ -55,12 +56,23 @@ def _normalise_rules(value):
     return []
 
 
-def _serialize_community(community, membership=None, join_request_status=None):
+def _serialize_community(community, membership=None, join_request_status=None, my_invite=None):
     member_role = None
     if isinstance(membership, CommunityMember):
         member_role = membership.role
     elif isinstance(membership, str):
         member_role = membership
+
+    invite_status = None
+    invite_id = None
+    if isinstance(my_invite, CommunityInvite):
+        invite_status = my_invite.status
+        invite_id = str(my_invite.id)
+    elif isinstance(my_invite, dict):
+        invite_status = my_invite.get('status')
+        invite_id = my_invite.get('id')
+    elif isinstance(my_invite, str):
+        invite_status = my_invite
 
     return {
         'id':                  str(community.id),
@@ -79,6 +91,8 @@ def _serialize_community(community, membership=None, join_request_status=None):
         'is_admin':            member_role == 'admin',
         'is_moderator':        member_role == 'moderator',
         'join_request_status': join_request_status,
+        'my_invite_status':    invite_status,
+        'my_invite_id':        invite_id,
         'created_by':          str(community.created_by_id),
         'created_at':          community.created_at.isoformat(),
         'updated_at':          community.updated_at.isoformat(),
@@ -156,12 +170,19 @@ class CommunityListCreateView(views.APIView):
             qs = qs.filter(category=cat)
 
         membership_map = {}
+        invite_map = {}
         profile = None
         if request.user.is_authenticated:
             profile = _get_profile(request.user)
             membership_map = {
                 str(m.community_id): m.role
                 for m in CommunityMember.objects.filter(user=profile).only('community_id', 'role')
+            }
+            invite_map = {
+                str(inv.community_id): {'status': inv.status, 'id': str(inv.id)}
+                for inv in CommunityInvite.objects.filter(
+                    invited_user=profile, status=CommunityInvite.STATUS_PENDING
+                ).only('community_id', 'status', 'id')
             }
 
         if tab == 'joined':
@@ -171,7 +192,7 @@ class CommunityListCreateView(views.APIView):
         else:
             qs = qs.order_by('-updated_at', '-created_at')
 
-        data = [_serialize_community(c, membership_map.get(str(c.id))) for c in qs[:50]]
+        data = [_serialize_community(c, membership_map.get(str(c.id)), my_invite=invite_map.get(str(c.id))) for c in qs[:50]]
         return Response({'results': data, 'categories': CATEGORIES})
 
     def post(self, request):
@@ -224,14 +245,19 @@ class CommunityDetailView(views.APIView):
 
         m = None
         join_request_status = None
+        my_invite = None
         if request.user.is_authenticated:
             profile = _get_profile(request.user)
             m = CommunityMember.objects.filter(community=community, user=profile).first()
             if not m:
                 jr = CommunityJoinRequest.objects.filter(community=community, user=profile).first()
                 if jr: join_request_status = jr.status
+                my_invite = CommunityInvite.objects.filter(
+                    community=community, invited_user=profile,
+                    status=CommunityInvite.STATUS_PENDING,
+                ).first()
 
-        return Response(_serialize_community(community, m, join_request_status))
+        return Response(_serialize_community(community, m, join_request_status, my_invite=my_invite))
 
     def patch(self, request, community_id):
         try:
@@ -567,3 +593,170 @@ class CommunityJoinRequestDetailView(views.APIView):
 
         notify_join_request_reviewed(jr)
         return Response(_serialize_join_request(jr))
+
+
+# ── Invites ───────────────────────────────────────────────────────────────────
+
+def _serialize_invite(invite):
+    return {
+        'id':           str(invite.id),
+        'status':       invite.status,
+        'created_at':   invite.created_at.isoformat(),
+        'responded_at': invite.responded_at.isoformat() if invite.responded_at else None,
+        'invited_user': {
+            'id':           str(invite.invited_user.id),
+            'username':     invite.invited_user.username,
+            'display_name': invite.invited_user.display_name,
+            'avatar_url':   invite.invited_user.avatar_url,
+            'is_verified':  invite.invited_user.is_verified,
+        },
+        'invited_by': {
+            'id':           str(invite.invited_by.id),
+            'username':     invite.invited_by.username,
+            'display_name': invite.invited_by.display_name,
+        },
+    }
+
+
+class CommunityInvitesView(views.APIView):
+    """Admin: send / list / cancel invites for a community."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, community_id):
+        try:
+            community = Community.objects.get(id=community_id)
+        except Community.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+
+        profile = _get_profile(request.user)
+        if not _is_mod_or_admin(profile, community):
+            return Response({'error': 'Permission denied'}, status=403)
+
+        status_filter = request.query_params.get('status', 'pending')
+        invites = (CommunityInvite.objects
+                   .filter(community=community, status=status_filter)
+                   .select_related('invited_user', 'invited_by')
+                   .order_by('-created_at')[:100])
+        return Response([_serialize_invite(inv) for inv in invites])
+
+    def post(self, request, community_id):
+        try:
+            community = Community.objects.get(id=community_id)
+        except Community.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+
+        profile = _get_profile(request.user)
+        if not _is_mod_or_admin(profile, community):
+            return Response({'error': 'Permission denied'}, status=403)
+
+        username = (request.data.get('username') or '').strip()
+        user_id  = request.data.get('user_id') or None
+
+        target = None
+        if username:
+            target = User.objects.filter(username=username).first()
+        elif user_id:
+            try:
+                target = User.objects.filter(id=user_id).first()
+            except Exception:
+                pass
+
+        if not target:
+            return Response({'error': 'User not found'}, status=404)
+        if str(target.id) == str(profile.id):
+            return Response({'error': 'Cannot invite yourself'}, status=400)
+        if CommunityMember.objects.filter(community=community, user=target).exists():
+            return Response({'error': 'User is already a member'}, status=400)
+
+        try:
+            invite, created = CommunityInvite.objects.get_or_create(
+                community=community,
+                invited_user=target,
+                defaults={'invited_by': profile, 'status': CommunityInvite.STATUS_PENDING},
+            )
+        except IntegrityError:
+            invite = CommunityInvite.objects.get(community=community, invited_user=target)
+            created = False
+
+        if not created:
+            if invite.status == CommunityInvite.STATUS_PENDING:
+                return Response({'error': 'Invite already pending for this user'}, status=400)
+            # Re-invite after declined / accepted
+            invite.status = CommunityInvite.STATUS_PENDING
+            invite.invited_by = profile
+            invite.responded_at = None
+            invite.save(update_fields=['status', 'invited_by', 'responded_at'])
+
+        notify_invite_sent(invite)
+        return Response(_serialize_invite(invite), status=201)
+
+    def delete(self, request, community_id):
+        """Cancel a pending invite.  Pass ?invite_id=<uuid>."""
+        try:
+            community = Community.objects.get(id=community_id)
+        except Community.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+
+        profile = _get_profile(request.user)
+        if not _is_mod_or_admin(profile, community):
+            return Response({'error': 'Permission denied'}, status=403)
+
+        invite_id = request.query_params.get('invite_id')
+        if not invite_id:
+            return Response({'error': 'invite_id required'}, status=400)
+        try:
+            invite = CommunityInvite.objects.get(
+                id=invite_id, community=community,
+                status=CommunityInvite.STATUS_PENDING,
+            )
+        except CommunityInvite.DoesNotExist:
+            return Response({'error': 'Pending invite not found'}, status=404)
+
+        invite.delete()
+        return Response({'cancelled': True})
+
+
+class CommunityInviteRespondView(views.APIView):
+    """Invited user accepts or declines a specific invite."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, community_id, invite_id):
+        from django.utils import timezone as tz
+        try:
+            community = Community.objects.get(id=community_id)
+        except Community.DoesNotExist:
+            return Response({'error': 'Community not found'}, status=404)
+        try:
+            invite = CommunityInvite.objects.select_related(
+                'invited_user', 'invited_by', 'community'
+            ).get(id=invite_id, community=community, status=CommunityInvite.STATUS_PENDING)
+        except CommunityInvite.DoesNotExist:
+            return Response({'error': 'Invite not found or no longer pending'}, status=404)
+
+        profile = _get_profile(request.user)
+        if str(invite.invited_user_id) != str(profile.id):
+            return Response({'error': 'This invite is not for you'}, status=403)
+
+        action = (request.data.get('action') or '').strip()
+        if action not in ('accept', 'decline'):
+            return Response({'error': "action must be 'accept' or 'decline'"}, status=400)
+
+        if action == 'accept':
+            invite.status = CommunityInvite.STATUS_ACCEPTED
+            invite.responded_at = tz.now()
+            invite.save(update_fields=['status', 'responded_at'])
+            CommunityMember.objects.get_or_create(community=community, user=profile)
+            community.member_count = community.members.count()
+            community.save(update_fields=['member_count'])
+        else:
+            invite.status = CommunityInvite.STATUS_DECLINED
+            invite.responded_at = tz.now()
+            invite.save(update_fields=['status', 'responded_at'])
+
+        notify_invite_responded(invite)
+        return Response({
+            'status':       invite.status,
+            'community_id': str(community.id),
+            'is_member':    action == 'accept',
+            'member_count': community.member_count,
+        })

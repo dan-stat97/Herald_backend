@@ -127,3 +127,29 @@ class CommunityPostComment(models.Model):
 
     def __str__(self):
         return f"{self.author.username}: {self.content[:40]}"
+
+
+class CommunityInvite(models.Model):
+    STATUS_PENDING  = 'pending'
+    STATUS_ACCEPTED = 'accepted'
+    STATUS_DECLINED = 'declined'
+    STATUS_CHOICES  = [
+        (STATUS_PENDING,  'Pending'),
+        (STATUS_ACCEPTED, 'Accepted'),
+        (STATUS_DECLINED, 'Declined'),
+    ]
+
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    community    = models.ForeignKey(Community, on_delete=models.CASCADE, related_name='invites')
+    invited_user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='community_invites')
+    invited_by   = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_community_invites')
+    status       = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    created_at   = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ('community', 'invited_user')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.invited_by.username} -> {self.invited_user.username} for {self.community.name} [{self.status}]"

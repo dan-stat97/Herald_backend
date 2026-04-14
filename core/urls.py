@@ -57,6 +57,7 @@ from communities.views import (
     CommunityPostsView, CommunityPostLikeView, CommunityPostCommentsView,
     CommunityPostPinView, CommunityMembersView,
     CommunityJoinRequestsView, CommunityJoinRequestDetailView,
+    CommunityInvitesView, CommunityInviteRespondView,
 )
 from causes.views import CauseViewSet as CausesViewSet
 from tasks.views import TaskViewSet
@@ -195,6 +196,8 @@ urlpatterns = [
     path('v1/communities/<uuid:community_id>/members/', CommunityMembersView.as_view(), name='community-members'),
     path('v1/communities/<uuid:community_id>/join-requests/', CommunityJoinRequestsView.as_view(), name='community-join-requests'),
     path('v1/communities/<uuid:community_id>/join-requests/<uuid:request_id>/', CommunityJoinRequestDetailView.as_view(), name='community-join-request-detail'),
+    path('v1/communities/<uuid:community_id>/invites/', CommunityInvitesView.as_view(), name='community-invites'),
+    path('v1/communities/<uuid:community_id>/invites/<uuid:invite_id>/respond/', CommunityInviteRespondView.as_view(), name='community-invite-respond'),
     
     # Admin endpoints
     path('v1/admin/me/role/', AdminRoleView.as_view(), name='admin-role'),
