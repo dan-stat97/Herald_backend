@@ -1,4 +1,6 @@
 
+import math
+
 from rest_framework import viewsets, permissions, filters
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -63,6 +65,7 @@ class PostViewSet(viewsets.ModelViewSet):
 
 			is_default_feed = not manual_sort and not search
 			cache_key = None
+			user_scope = None
 			if is_default_feed:
 				user_scope = f"user:{request.user.id}" if getattr(request.user, 'is_authenticated', False) else 'anon'
 				cache_key = f"feed:page:{page_number}:limit:{min(request_limit, 100)}:{user_scope}:v2"
@@ -70,12 +73,47 @@ class PostViewSet(viewsets.ModelViewSet):
 				if cached_payload is not None:
 					return Response(cached_payload)
 
-			candidate_limit = min(max(request_limit, 20) * 6, 240)
+			candidate_limit = min(max(request_limit, 20) * 5, 180)
 
 			if manual_sort or search:
 				ranked_items = queryset
 			else:
-				ranked_items = rank_feed_posts(queryset, request, candidate_limit=candidate_limit)
+				ranked_ids_cache_key = f"feed:ranked-ids:{user_scope}:limit:{candidate_limit}:v1"
+				ranked_ids = cache.get(ranked_ids_cache_key)
+				if ranked_ids is None:
+					ranked_items = rank_feed_posts(queryset, request, candidate_limit=candidate_limit)
+					ranked_ids = [item.id for item in ranked_items]
+					cache.set(ranked_ids_cache_key, ranked_ids, 30)
+
+				start = (page_number - 1) * request_limit
+				end = start + request_limit
+				page_ids = ranked_ids[start:end]
+				if page_ids:
+					page_map = {
+						post.id: post
+						for post in queryset.filter(id__in=page_ids)
+					}
+					page_items = [page_map[post_id] for post_id in page_ids if post_id in page_map]
+				else:
+					page_items = []
+
+				serializer = self.get_serializer(
+					page_items,
+					many=True,
+					context={**self.get_serializer_context(), '_post_list': page_items},
+				)
+				payload = {
+					'data': serializer.data,
+					'pagination': {
+						'page': page_number,
+						'limit': request_limit,
+						'total': len(ranked_ids),
+						'total_pages': math.ceil(len(ranked_ids) / request_limit) if request_limit else 0,
+					},
+				}
+				if cache_key:
+					cache.set(cache_key, payload, 30)
+				return Response(payload)
 
 			page = self.paginate_queryset(ranked_items)
 			if page is not None:
