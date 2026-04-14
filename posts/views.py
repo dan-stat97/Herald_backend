@@ -3,6 +3,7 @@ from rest_framework import viewsets, permissions, filters
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework import status
+from django.core.cache import cache
 from django.db.models import F
 from .models import Post, PostLike, PostRepost, PostBookmark
 from .serializers import PostSerializer, PostCreateSerializer
@@ -51,7 +52,25 @@ class PostViewSet(viewsets.ModelViewSet):
 			sort = request.query_params.get('sort')
 			manual_sort = bool(sort and sort != '-created_at')
 			search = request.query_params.get('search')
-			candidate_limit = min(max(int(request.query_params.get('limit', 20)), 20) * 10, 320)
+			try:
+				page_number = max(int(request.query_params.get('page', 1)), 1)
+			except (TypeError, ValueError):
+				page_number = 1
+			try:
+				request_limit = max(int(request.query_params.get('limit', 20)), 1)
+			except (TypeError, ValueError):
+				request_limit = 20
+
+			is_default_feed = not manual_sort and not search
+			cache_key = None
+			if is_default_feed:
+				user_scope = f"user:{request.user.id}" if getattr(request.user, 'is_authenticated', False) else 'anon'
+				cache_key = f"feed:page:{page_number}:limit:{min(request_limit, 100)}:{user_scope}:v2"
+				cached_payload = cache.get(cache_key)
+				if cached_payload is not None:
+					return Response(cached_payload)
+
+			candidate_limit = min(max(request_limit, 20) * 6, 240)
 
 			if manual_sort or search:
 				ranked_items = queryset
@@ -62,10 +81,16 @@ class PostViewSet(viewsets.ModelViewSet):
 			if page is not None:
 				page_items = list(page)
 				serializer = self.get_serializer(page_items, many=True, context={**self.get_serializer_context(), '_post_list': page_items})
-				return self.get_paginated_response(serializer.data)
+				response = self.get_paginated_response(serializer.data)
+				if cache_key:
+					cache.set(cache_key, response.data, 30)
+				return response
 			items = list(ranked_items)
 			serializer = self.get_serializer(items, many=True, context={**self.get_serializer_context(), '_post_list': items})
-			return Response(serializer.data)
+			payload = serializer.data
+			if cache_key:
+				cache.set(cache_key, payload, 30)
+			return Response(payload)
 		except Exception as e:
 			print(f"Error listing posts: {e}")
 			# Return empty paginated payload instead of 500 error
@@ -75,6 +100,13 @@ class PostViewSet(viewsets.ModelViewSet):
 		if self.action in ['create', 'update', 'partial_update']:
 			return PostCreateSerializer
 		return PostSerializer
+
+	def retrieve(self, request, *args, **kwargs):
+		instance = self.get_object()
+		Post.objects.filter(pk=instance.pk).update(views_count=F('views_count') + 1)
+		instance.refresh_from_db()
+		serializer = self.get_serializer(instance, context={**self.get_serializer_context(), '_post_list': [instance]})
+		return Response(serializer.data)
 
 	def create(self, request, *args, **kwargs):
 		serializer = self.get_serializer(data=request.data)
@@ -226,22 +258,8 @@ class PostViewSet(viewsets.ModelViewSet):
 		limit = min(int(request.query_params.get('limit', 20)), 100)
 		cutoff = timezone.now() - timedelta(hours=48)
 
-		posts = (
-			Post.objects
-			.select_related('author_id', 'author_id__user_id')
-			.annotate(
-				engagement=ExpressionWrapper(
-					F('likes_count') + F('comments_count') + F('shares_count'),
-					output_field=IntegerField(),
-				)
-			)
-			.filter(created_at__gte=cutoff)
-			.order_by('-engagement', '-created_at')[:limit]
-		)
-
-		# Fall back to all-time if last 48h is empty
-		if not posts.exists():
-			posts = (
+		def _fetch(extra_filter=None):
+			qs = (
 				Post.objects
 				.select_related('author_id', 'author_id__user_id')
 				.annotate(
@@ -250,10 +268,18 @@ class PostViewSet(viewsets.ModelViewSet):
 						output_field=IntegerField(),
 					)
 				)
-				.order_by('-engagement', '-created_at')[:limit]
+				.order_by('-engagement', '-created_at')
 			)
+			if extra_filter:
+				qs = qs.filter(**extra_filter)
+			# Evaluate to list immediately — avoids calling .exists() on a sliced
+			# queryset which would fire a second full annotated query.
+			return list(qs[:limit])
 
-		post_items = list(posts)
+		post_items = _fetch({'created_at__gte': cutoff})
+		if not post_items:
+			post_items = _fetch()
+
 		serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items})
 		return Response({'data': serializer.data, 'pagination': {'page': 1, 'limit': limit, 'total': len(post_items), 'total_pages': 1}})
 
@@ -261,29 +287,41 @@ class PostViewSet(viewsets.ModelViewSet):
 	def following(self, request):
 		"""Posts from users the authenticated user follows."""
 		from core.models import Follow, Profiles
-		from users.legacy_profiles import ensure_legacy_profile
 
 		limit = min(int(request.query_params.get('limit', 20)), 100)
 		page = max(int(request.query_params.get('page', 1)), 1)
+		offset = (page - 1) * limit
 		default_usernames = ['heraldnews', 'heraldtoday', 'heraldworlddesk', 'heraldprayerdesk', 'heraldworship']
 
 		try:
 			profile = UserProfile.objects.get(user_id=request.user)
-			legacy_profile = ensure_legacy_profile(profile)
-			following_ids = list(
-				Follow.objects.filter(follower_id=legacy_profile.id).values_list('following_id', flat=True)
-			)
 		except UserProfile.DoesNotExist:
-			return Response({'data': [], 'pagination': {'page': 1, 'limit': limit, 'total': 0, 'total_pages': 0}})
+			return Response({'data': [], 'pagination': {'page': 1, 'limit': limit, 'has_more': False}})
 
-		if not following_ids:
+		# Look up legacy profile without writing (ensure_legacy_profile does a
+		# get_or_create + possible UPDATE on every request — too expensive here).
+		legacy = Profiles.objects.filter(user_id=profile.user_id_id).first()
+
+		# Resolve followed users' auth IDs in one subquery instead of two queries.
+		if legacy:
+			following_auth_ids = list(
+				Profiles.objects.filter(
+					id__in=Follow.objects.filter(follower_id=legacy.id).values('following_id')
+				).values_list('user_id', flat=True)
+			)
+		else:
+			following_auth_ids = []
+
+		if not following_auth_ids:
 			default_ids = list(
-				UserProfile.objects.filter(username__in=default_usernames).exclude(id=profile.id).values_list('id', flat=True)
+				UserProfile.objects.filter(username__in=default_usernames)
+				.exclude(id=profile.id)
+				.values_list('id', flat=True)
 			)
 			if not default_ids:
 				return Response({
 					'data': [],
-					'pagination': {'page': 1, 'limit': limit, 'total': 0, 'total_pages': 0},
+					'pagination': {'page': 1, 'limit': limit, 'has_more': False},
 					'message': 'Follow some users to see their posts here.',
 				})
 
@@ -293,46 +331,30 @@ class PostViewSet(viewsets.ModelViewSet):
 				.filter(author_id__id__in=default_ids)
 				.order_by('-created_at')
 			)
-			total = posts_qs.count()
-			offset = (page - 1) * limit
-			posts = posts_qs[offset:offset + limit]
-			post_items = list(posts)
+			# Fetch limit+1 to determine has_more without a COUNT(*) query
+			post_items = list(posts_qs[offset:offset + limit + 1])
+			has_more = len(post_items) > limit
+			post_items = post_items[:limit]
 			serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items})
 			return Response({
 				'data': serializer.data,
-				'pagination': {
-					'page': page,
-					'limit': limit,
-					'total': total,
-					'total_pages': (total + limit - 1) // limit,
-				},
+				'pagination': {'page': page, 'limit': limit, 'has_more': has_more},
 				'message': 'Showing official Herald accounts until you follow people.',
 				'is_default_feed': True,
 			})
 
-		following_auth_user_ids = list(
-			Profiles.objects.filter(id__in=following_ids).values_list('user_id', flat=True)
-		)
-
 		posts_qs = (
 			Post.objects
 			.select_related('author_id', 'author_id__user_id')
-			.filter(author_id__user_id_id__in=following_auth_user_ids)
+			.filter(author_id__user_id_id__in=following_auth_ids)
 			.order_by('-created_at')
 		)
-
-		total = posts_qs.count()
-		offset = (page - 1) * limit
-		posts = posts_qs[offset:offset + limit]
-
-		post_items = list(posts)
+		# Fetch limit+1 to determine has_more without a COUNT(*) query
+		post_items = list(posts_qs[offset:offset + limit + 1])
+		has_more = len(post_items) > limit
+		post_items = post_items[:limit]
 		serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items})
 		return Response({
 			'data': serializer.data,
-			'pagination': {
-				'page': page,
-				'limit': limit,
-				'total': total,
-				'total_pages': (total + limit - 1) // limit,
-			},
+			'pagination': {'page': page, 'limit': limit, 'has_more': has_more},
 		})
