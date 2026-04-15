@@ -18,7 +18,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
 			queryset = queryset.filter(read=(read.lower() == 'true'))
 		return queryset
 
-	@action(detail=True, methods=['patch'])
+	@action(detail=True, methods=['patch', 'post'], url_path='mark_read')
 	def mark_read(self, request, pk=None):
 		notification = self.get_object()
 		notification.read = True

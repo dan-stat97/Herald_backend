@@ -119,6 +119,13 @@ urlpatterns = [
     # News bookmarks
     path('v1/news/bookmarks/me/', NewsBookmarksView.as_view(), name='news-bookmarks-me'),
 
+    # Notification compatibility routes must come before router_v1.urls
+    # so the generic /notifications/<pk>/ route does not swallow them.
+    path('v1/notifications/mark-all-read/', NotificationViewSet.as_view({'post': 'mark_all_read'}), name='notifications-mark-all-read'),
+    path('v1/notifications/clear-all/', NotificationViewSet.as_view({'delete': 'clear_all'}), name='notifications-clear-all'),
+    path('v1/notifications/<uuid:pk>/mark_read/', NotificationViewSet.as_view({'post': 'mark_read', 'patch': 'mark_read'}), name='notifications-mark-read'),
+    path('v1/notifications/<uuid:pk>/mark_as_read/', NotificationViewSet.as_view({'post': 'mark_as_read'}), name='notifications-mark-as-read'),
+
     # Main v1 API endpoints
     path('v1/', include(router_v1.urls)),
 
@@ -172,8 +179,6 @@ urlpatterns = [
     path('v1/leaderboard/earnings/', LeaderboardViewSet.as_view({'get': 'earnings'}), name='leaderboard-earnings'),
     path('v1/leaderboard/points/', LeaderboardViewSet.as_view({'get': 'points'}), name='leaderboard-points'),
     path('v1/leaderboard/me/', LeaderboardViewSet.as_view({'get': 'me'}), name='leaderboard-me'),
-    path('v1/notifications/mark-all-read/', NotificationViewSet.as_view({'post': 'mark_all_read'}), name='notifications-mark-all-read'),
-    path('v1/notifications/clear-all/', NotificationViewSet.as_view({'delete': 'clear_all'}), name='notifications-clear-all'),
     path('v1/posts/<pk>/like/', PostViewSet.as_view({'post': 'like', 'delete': 'unlike'}), name='post-like'),
     path('v1/posts/<pk>/unlike/', PostViewSet.as_view({'post': 'unlike'}), name='post-unlike'),
     path('v1/posts/<pk>/share/', PostViewSet.as_view({'post': 'share'}), name='post-share'),

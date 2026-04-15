@@ -1,19 +1,17 @@
-# core/leaderboard_views.py
-from rest_framework import viewsets, permissions
+from django.core.cache import cache
+from django.db.models import Count
+from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Count
-from datetime import timedelta
-from django.utils import timezone
 
-# Use the real UserProfile model (users_user table in production)
 from users.models import User as UserProfile
 from users.serializers import UserProfileSerializer
 from wallets.models import Wallet
 
 
 class LeaderboardViewSet(viewsets.GenericViewSet):
-    """Leaderboard endpoints — public read access"""
+    """Leaderboard endpoints with short public caching."""
+
     permission_classes = [permissions.AllowAny]
 
     def _serialize_profile(self, profile, rank, extra=None):
@@ -30,28 +28,44 @@ class LeaderboardViewSet(viewsets.GenericViewSet):
             data.update(extra)
         return data
 
+    def _cache_response(self, metric, limit, builder):
+        cache_key = f'leaderboard:{metric}:limit:{limit}'
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+        payload = builder()
+        cache.set(cache_key, payload, 30)
+        return Response(payload)
+
     @action(detail=False, methods=['get'])
     def reputation(self, request):
-        """Top users by reputation score"""
         limit = min(int(request.query_params.get('limit', 50)), 100)
-        queryset = UserProfile.objects.all().order_by('-reputation')[:limit]
-        ranked = [self._serialize_profile(u, idx) for idx, u in enumerate(queryset, 1)]
-        return Response(ranked)
+        return self._cache_response(
+            'reputation',
+            limit,
+            lambda: [
+                self._serialize_profile(profile, idx)
+                for idx, profile in enumerate(
+                    UserProfile.objects.all().order_by('-reputation')[:limit],
+                    1,
+                )
+            ],
+        )
 
     @action(detail=False, methods=['get'])
     def engagement(self, request):
-        """Top users by post count (engagement proxy)"""
         limit = min(int(request.query_params.get('limit', 50)), 100)
-        queryset = (
-            UserProfile.objects
-            .annotate(post_count=Count('post'))
-            .order_by('-post_count')[:limit]
+        return self._cache_response(
+            'engagement',
+            limit,
+            lambda: [
+                self._serialize_profile(profile, idx, {'total_engagement': getattr(profile, 'post_count', 0)})
+                for idx, profile in enumerate(
+                    UserProfile.objects.annotate(post_count=Count('post')).order_by('-post_count')[:limit],
+                    1,
+                )
+            ],
         )
-        ranked = [
-            self._serialize_profile(u, idx, {'total_engagement': getattr(u, 'post_count', 0)})
-            for idx, u in enumerate(queryset, 1)
-        ]
-        return Response(ranked)
 
     @action(detail=False, methods=['get'])
     def activity(self, request):
@@ -59,23 +73,25 @@ class LeaderboardViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['get'])
     def points(self, request):
-        """Top users by HTTN wallet points"""
         limit = min(int(request.query_params.get('limit', 50)), 100)
         try:
-            wallets = Wallet.objects.select_related('user').order_by('-httn_points')[:limit]
-            ranked = []
-            for idx, wallet in enumerate(wallets, 1):
-                try:
-                    profile = wallet.user
-                    data = self._serialize_profile(profile, idx, {
-                        'httn_points': wallet.httn_points,
-                    })
-                    ranked.append(data)
-                except Exception:
-                    continue
-            return Response(ranked)
+            def build_points():
+                wallets = Wallet.objects.select_related('user').order_by('-httn_points')[:limit]
+                ranked = []
+                for idx, wallet in enumerate(wallets, 1):
+                    try:
+                        profile = wallet.user
+                        ranked.append(
+                            self._serialize_profile(profile, idx, {
+                                'httn_points': wallet.httn_points,
+                            })
+                        )
+                    except Exception:
+                        continue
+                return ranked
+
+            return self._cache_response('points', limit, build_points)
         except Exception:
-            # Fallback: return reputation leaderboard if wallet table unavailable
             return self.reputation(request)
 
     @action(detail=False, methods=['get'])
@@ -84,7 +100,6 @@ class LeaderboardViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['get'])
     def me(self, request):
-        """Current user's rank by reputation"""
         if not request.user.is_authenticated:
             return Response({'error': 'Authentication required'}, status=401)
         try:
