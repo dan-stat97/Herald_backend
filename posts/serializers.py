@@ -1,11 +1,24 @@
 from django.db.models import Count
 from rest_framework import serializers
-from .models import Post, Comment, PostLike, PostRepost, PostBookmark
+from .models import (
+    Post,
+    Comment,
+    PostLike,
+    PostRepost,
+    PostBookmark,
+    CommentLike,
+    CommentRepost,
+    CommentBookmark,
+)
 from core.models import Follow, Profiles
 from users.legacy_profiles import ensure_legacy_profile
 
 class CommentSerializer(serializers.ModelSerializer):
     author = serializers.SerializerMethodField()
+    parent_comment_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+    is_liked = serializers.SerializerMethodField()
+    is_reposted = serializers.SerializerMethodField()
+    is_bookmarked = serializers.SerializerMethodField()
 
     def get_author(self, obj):
         author = getattr(obj, 'author', None)
@@ -38,10 +51,116 @@ class CommentSerializer(serializers.ModelSerializer):
             'updated_at': author.updated_at,
         }
 
+    def _get_user_profile(self):
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return None
+        _SENTINEL = object()
+        cached = self.context.get('_cached_comment_user_profile', _SENTINEL)
+        if cached is not _SENTINEL:
+            return cached
+        try:
+            from users.models import User as UserProfile
+            profile = UserProfile.objects.get(user_id=request.user)
+        except Exception:
+            profile = None
+        self.context['_cached_comment_user_profile'] = profile
+        return profile
+
+    def _ensure_comment_caches(self):
+        cached = self.context.get('_comment_serializer_caches')
+        if cached is not None:
+            return cached
+
+        instance = getattr(self, 'instance', None)
+        if instance is None:
+            comments = []
+        elif isinstance(instance, (list, tuple)):
+            comments = list(instance)
+        else:
+            comments = [instance]
+
+        comment_ids = [comment.id for comment in comments]
+        profile = self._get_user_profile()
+        liked_comment_ids = set()
+        reposted_comment_ids = set()
+        bookmarked_comment_ids = set()
+        if profile and comment_ids:
+            liked_comment_ids = set(CommentLike.objects.filter(user=profile, comment_id__in=comment_ids).values_list('comment_id', flat=True))
+            reposted_comment_ids = set(CommentRepost.objects.filter(user=profile, comment_id__in=comment_ids).values_list('comment_id', flat=True))
+            bookmarked_comment_ids = set(CommentBookmark.objects.filter(user=profile, comment_id__in=comment_ids).values_list('comment_id', flat=True))
+
+        cached = {
+            'liked_comment_ids': liked_comment_ids,
+            'reposted_comment_ids': reposted_comment_ids,
+            'bookmarked_comment_ids': bookmarked_comment_ids,
+        }
+        self.context['_comment_serializer_caches'] = cached
+        return cached
+
+    def get_is_liked(self, obj):
+        try:
+            return obj.id in self._ensure_comment_caches()['liked_comment_ids']
+        except Exception:
+            profile = self._get_user_profile()
+            if not profile:
+                return False
+            return CommentLike.objects.filter(comment=obj, user=profile).exists()
+
+    def get_is_reposted(self, obj):
+        try:
+            return obj.id in self._ensure_comment_caches()['reposted_comment_ids']
+        except Exception:
+            profile = self._get_user_profile()
+            if not profile:
+                return False
+            return CommentRepost.objects.filter(comment=obj, user=profile).exists()
+
+    def get_is_bookmarked(self, obj):
+        try:
+            return obj.id in self._ensure_comment_caches()['bookmarked_comment_ids']
+        except Exception:
+            profile = self._get_user_profile()
+            if not profile:
+                return False
+            return CommentBookmark.objects.filter(comment=obj, user=profile).exists()
+
     class Meta:
         model = Comment
-        fields = ['id', 'post', 'author', 'content', 'likes_count', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'post', 'author', 'likes_count', 'created_at', 'updated_at']
+        fields = [
+            'id',
+            'post',
+            'author',
+            'parent_comment',
+            'parent_comment_id',
+            'content',
+            'likes_count',
+            'replies_count',
+            'shares_count',
+            'bookmarks_count',
+            'views_count',
+            'is_liked',
+            'is_reposted',
+            'is_bookmarked',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = [
+            'id',
+            'post',
+            'author',
+            'parent_comment',
+            'likes_count',
+            'replies_count',
+            'shares_count',
+            'bookmarks_count',
+            'views_count',
+            'is_liked',
+            'is_reposted',
+            'is_bookmarked',
+            'created_at',
+            'updated_at',
+        ]
 
 class PostSerializer(serializers.ModelSerializer):
     author_id = serializers.SerializerMethodField()

@@ -34,13 +34,65 @@ class Comment(models.Model):
 	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 	post = models.ForeignKey(Post, related_name='comments', on_delete=models.CASCADE)
 	author = models.ForeignKey('users.User', to_field='user_id', on_delete=models.CASCADE)
+	parent_comment = models.ForeignKey('self', null=True, blank=True, related_name='replies', on_delete=models.CASCADE)
 	content = models.TextField()
 	likes_count = models.IntegerField(default=0)
+	replies_count = models.IntegerField(default=0)
+	shares_count = models.IntegerField(default=0)
+	bookmarks_count = models.IntegerField(default=0)
+	views_count = models.IntegerField(default=0)
 	created_at = models.DateTimeField(auto_now_add=True)
 	updated_at = models.DateTimeField(auto_now=True)
 
+	class Meta:
+		ordering = ['created_at']
+		indexes = [
+			models.Index(fields=['post', 'created_at'], name='cmt_post_created_idx'),
+			models.Index(fields=['parent_comment', 'created_at'], name='cmt_parent_created_idx'),
+			models.Index(fields=['author', 'created_at'], name='cmt_author_created_idx'),
+		]
+
 	def __str__(self):
 		return f"{self.author.username}: {self.content[:30]}"
+
+
+class CommentLike(models.Model):
+	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+	comment = models.ForeignKey(Comment, related_name='likes', on_delete=models.CASCADE)
+	user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='comment_likes')
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		unique_together = ('comment', 'user')
+		indexes = [
+			models.Index(fields=['user', '-created_at'], name='cmtlike_user_created_idx'),
+		]
+
+
+class CommentRepost(models.Model):
+	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+	comment = models.ForeignKey(Comment, related_name='reposts', on_delete=models.CASCADE)
+	user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='comment_reposts')
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		unique_together = ('comment', 'user')
+		indexes = [
+			models.Index(fields=['user', '-created_at'], name='cmtrepost_user_created_idx'),
+		]
+
+
+class CommentBookmark(models.Model):
+	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+	comment = models.ForeignKey(Comment, related_name='bookmarks', on_delete=models.CASCADE)
+	user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='comment_bookmarks')
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		unique_together = ('comment', 'user')
+		indexes = [
+			models.Index(fields=['user', '-created_at'], name='cmtbookmark_user_created_idx'),
+		]
 
 
 class PostLike(models.Model):
