@@ -87,7 +87,7 @@ class StreamDonation(models.Model):
         db_table = 'stream_donations'
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['stream', '-created_at'], name='stream_donation_stream_created_idx'),
+            models.Index(fields=['stream', '-created_at'], name='strm_don_stream_created_idx'),
         ]
 
     def __str__(self):
@@ -110,8 +110,8 @@ class StreamViewerEvent(models.Model):
         db_table = 'stream_viewer_events'
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['stream', '-created_at'], name='stream_viewer_stream_created_idx'),
-            models.Index(fields=['user', '-created_at'], name='stream_viewer_user_created_idx'),
+            models.Index(fields=['stream', '-created_at'], name='strm_view_stream_created_idx'),
+            models.Index(fields=['user', '-created_at'], name='strm_view_user_created_idx'),
         ]
 
     def __str__(self):

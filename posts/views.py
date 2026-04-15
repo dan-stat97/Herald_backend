@@ -145,8 +145,11 @@ class PostViewSet(viewsets.ModelViewSet):
 	def retrieve(self, request, *args, **kwargs):
 		instance = self.get_object()
 		Post.objects.filter(pk=instance.pk).update(views_count=F('views_count') + 1)
-		instance.refresh_from_db()
-		serializer = self.get_serializer(instance, context={**self.get_serializer_context(), '_post_list': [instance]})
+		instance.views_count = (instance.views_count or 0) + 1
+		serializer = self.get_serializer(
+			instance,
+			context={**self.get_serializer_context(), '_post_list': [instance], '_author_summary_only': True},
+		)
 		return Response(serializer.data)
 
 	def create(self, request, *args, **kwargs):

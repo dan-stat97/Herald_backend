@@ -26,14 +26,14 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='streamdonation',
-            index=models.Index(fields=['stream', '-created_at'], name='stream_donation_stream_created_idx'),
+            index=models.Index(fields=['stream', '-created_at'], name='strm_don_stream_created_idx'),
         ),
         migrations.AddIndex(
             model_name='streamviewerevent',
-            index=models.Index(fields=['stream', '-created_at'], name='stream_viewer_stream_created_idx'),
+            index=models.Index(fields=['stream', '-created_at'], name='strm_view_stream_created_idx'),
         ),
         migrations.AddIndex(
             model_name='streamviewerevent',
-            index=models.Index(fields=['user', '-created_at'], name='stream_viewer_user_created_idx'),
+            index=models.Index(fields=['user', '-created_at'], name='strm_view_user_created_idx'),
         ),
     ]
