@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
@@ -30,9 +31,16 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         comment = self.get_object()
+        # Only the comment author can delete it
+        try:
+            profile = ensure_user_profile(request.user)
+        except Exception:
+            raise PermissionDenied("Authentication required.")
+        if comment.author != profile:
+            raise PermissionDenied("You can only delete your own comments.")
         post = comment.post
         response = super().destroy(request, *args, **kwargs)
-        # Atomic decrement, floor at 0
+        # Atomic decrement
         Post.objects.filter(pk=post.pk).update(
             comments_count=F('comments_count') - 1
         )

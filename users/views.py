@@ -715,6 +715,80 @@ class CurrentUserView(views.APIView):
         return Response(UserProfileSerializer(profile).data)
 
 
+class PasswordResetRequestView(views.APIView):
+    """
+    POST /auth/password-reset/request/
+    Body: { "email": "user@example.com" }
+    Generates a 6-digit code, caches it for 15 min, returns it in the response.
+    In production: remove 'code' from response and send via email instead.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = (request.data.get('email') or '').strip().lower()
+        if not email:
+            return Response({'error': 'Email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        AuthUserModel = get_user_model()
+        try:
+            auth_user = AuthUserModel.objects.get(email__iexact=email)
+        except AuthUserModel.DoesNotExist:
+            # Don't leak account existence
+            return Response({'message': 'If that email is registered you will receive a reset code.'})
+
+        import random
+        import string as str_module
+        code = ''.join(random.choices(str_module.digits, k=6))
+        cache_key = f'pwd_reset:{email}'
+        cache.set(cache_key, {'code': code, 'user_id': str(auth_user.pk)}, timeout=900)
+
+        # TODO: send via email in production — returning code for development
+        return Response({
+            'message': 'If that email is registered you will receive a reset code.',
+            'code': code,
+        })
 
 
+class PasswordResetConfirmView(views.APIView):
+    """
+    POST /auth/password-reset/confirm/
+    Body: { "email": "...", "code": "123456", "new_password": "..." }
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = (request.data.get('email') or '').strip().lower()
+        code = (request.data.get('code') or '').strip()
+        new_password = request.data.get('new_password') or ''
+
+        if not email or not code or not new_password:
+            return Response(
+                {'error': 'email, code, and new_password are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(new_password) < 8:
+            return Response(
+                {'error': 'Password must be at least 8 characters.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cache_key = f'pwd_reset:{email}'
+        stored = cache.get(cache_key)
+        if not stored or stored.get('code') != code:
+            return Response(
+                {'error': 'Invalid or expired reset code.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        AuthUserModel = get_user_model()
+        try:
+            auth_user = AuthUserModel.objects.get(pk=stored['user_id'])
+        except AuthUserModel.DoesNotExist:
+            return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        auth_user.set_password(new_password)
+        auth_user.save(update_fields=['password'])
+        cache.delete(cache_key)
+
+        return Response({'message': 'Password reset successfully.'})
 

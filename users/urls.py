@@ -4,6 +4,7 @@ from .views import (
     SignupView, SigninView, SignoutView, RefreshView, CurrentUserView,
     UserProfileViewSet, SessionView, ChangePasswordView, UserPostsView, UserTasksView,
     KingsChatAuthView, KingsChatCallbackView,
+    PasswordResetRequestView, PasswordResetConfirmView,
 )
 from .extra_views import UserTaskClaimMeView
 
@@ -21,6 +22,8 @@ urlpatterns = [
     path('user/', CurrentUserView.as_view(), name='auth-user'),
     path('session/', SessionView.as_view(), name='auth-session'),
     path('change-password/', ChangePasswordView.as_view(), name='auth-change-password'),
+    path('password-reset/request/', PasswordResetRequestView.as_view(), name='auth-password-reset-request'),
+    path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='auth-password-reset-confirm'),
 
     path('users/profiles/me/', CurrentUserView.as_view(), name='auth-me-profile'),
     path('users/profiles/me/posts/', UserPostsView.as_view(), name='auth-me-posts'),

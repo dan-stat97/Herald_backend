@@ -2,6 +2,7 @@
 import math
 
 from rest_framework import viewsets, permissions, filters
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework import status
@@ -205,6 +206,28 @@ class PostViewSet(viewsets.ModelViewSet):
 	def _get_profile(self, request):
 		"""Return the users.User profile for the authenticated user."""
 		return ensure_user_profile(request.user)
+
+	def perform_destroy(self, instance):
+		"""Only the post author can delete their own post."""
+		try:
+			profile = self._get_profile(self.request)
+		except Exception:
+			raise PermissionDenied("Authentication required.")
+		if instance.author_id != profile:
+			raise PermissionDenied("You can only delete your own posts.")
+		instance.delete()
+		# Bump cache version so stale cached feed responses are invalidated
+		bump_post_timeline_cache_version()
+
+	def perform_update(self, serializer):
+		"""Only the post author can edit their own post."""
+		try:
+			profile = self._get_profile(self.request)
+		except Exception:
+			raise PermissionDenied("Authentication required.")
+		if serializer.instance.author_id != profile:
+			raise PermissionDenied("You can only edit your own posts.")
+		serializer.save()
 
 	@action(detail=True, methods=['post'])
 	def like(self, request, pk=None):
