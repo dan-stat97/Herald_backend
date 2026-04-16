@@ -108,6 +108,7 @@ def _serialize_post(post, liked_ids=None, include_comments=False):
         'media_type':     post.media_type or None,
         'likes_count':    post.likes_count,
         'comments_count': post.comments_count,
+        'views_count':    getattr(post, 'views_count', 0),
         'is_pinned':      post.is_pinned,
         'is_liked':       (post.id in liked_ids) if liked_ids is not None else False,
         'created_at':     post.created_at.isoformat(),
@@ -481,6 +482,20 @@ class CommunityPostPinView(views.APIView):
         post.is_pinned = False
         post.save(update_fields=['is_pinned'])
         return Response({'is_pinned': False})
+
+
+class CommunityPostViewView(views.APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, community_id, post_id):
+        try:
+            post = CommunityPost.objects.get(id=post_id, community_id=community_id)
+        except CommunityPost.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+
+        CommunityPost.objects.filter(pk=post.pk).update(views_count=F('views_count') + 1)
+        post.refresh_from_db(fields=['views_count'])
+        return Response({'views_count': post.views_count})
 
 
 # ── Members ───────────────────────────────────────────────────────────────────

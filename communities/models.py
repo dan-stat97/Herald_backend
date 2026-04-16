@@ -94,6 +94,7 @@ class CommunityPost(models.Model):
     media_type     = models.CharField(max_length=20, null=True, blank=True)
     likes_count    = models.IntegerField(default=0)
     comments_count = models.IntegerField(default=0)
+    views_count    = models.IntegerField(default=0)
     is_pinned      = models.BooleanField(default=False)
     created_at     = models.DateTimeField(auto_now_add=True)
     updated_at     = models.DateTimeField(auto_now=True)
