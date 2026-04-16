@@ -105,6 +105,7 @@ urlpatterns = [
     path('v1/health/db/', ApiHealthDbView.as_view(), name='api-health-db'),
     path('v1/health/auth/', ApiHealthAuthView.as_view(), name='api-health-auth'),
     path('v1/docs/', ApiDocsView.as_view(), name='api-docs'),
+    path('v1/docs', ApiDocsView.as_view(), name='api-docs-no-slash'),
     path('v1/trending/topics/', TrendingTopicsView.as_view(), name='trending-topics'),
     path('v1/search/users/', UserSearchView.as_view(), name='search-users'),
     path('v1/search/posts/', SearchPostsView.as_view(), name='search-posts'),
