@@ -20,6 +20,7 @@ def api_root(request, format=None):
         'version': '1.0.0',
         'authentication': 'JWT Bearer Token  —  Authorization: Bearer <access_token>',
         'base_url': _url(request, '/'),
+        'docs_html': _url(request, '/docs/'),
 
         # ── Health ────────────────────────────────────────────────────────────
         'health': {
@@ -94,12 +95,17 @@ def api_root(request, format=None):
             'detail':  '/api/v1/comments/{comment_id}/',
             'create':  _url(request, '/comments/'),
             'like':    '/api/v1/comments/{comment_id}/like/',
+            'unlike':  '/api/v1/comments/{comment_id}/unlike/',
+            'share':   '/api/v1/comments/{comment_id}/share/',
+            'bookmark': '/api/v1/comments/{comment_id}/bookmark/',
+            'unbookmark': '/api/v1/comments/{comment_id}/unbookmark/',
         },
 
         # ── Notifications ─────────────────────────────────────────────────────
         'notifications': {
             'list':          _url(request, '/notifications/'),
             'detail':        '/api/v1/notifications/{notification_id}/',
+            'mark_read_v2':  '/api/v1/notifications/{notification_id}/mark_read/',
             'mark_read':     '/api/v1/notifications/{notification_id}/mark_as_read/',
             'mark_all_read': _url(request, '/notifications/mark-all-read/'),
             'clear_all':     _url(request, '/notifications/clear-all/'),
@@ -147,6 +153,7 @@ def api_root(request, format=None):
             'list':          _url(request, '/streams/'),
             'detail':        '/api/v1/streams/{stream_id}/',
             'create':        _url(request, '/streams/'),
+            'end':           '/api/v1/streams/{stream_id}/end/',
             'chat':          '/api/v1/streams/{stream_id}/chat/',
             'donations':     '/api/v1/streams/{stream_id}/donations/',
             'viewer_join':   '/api/v1/streams/{stream_id}/viewer-join/',
@@ -209,6 +216,7 @@ def api_root(request, format=None):
             '_note': '[public]',
             'users':           _url(request, '/search/users/'),
             'posts':           _url(request, '/search/posts/'),
+            'unified':         _url(request, '/search/'),
             'trending_topics': _url(request, '/trending/topics/'),
         },
 

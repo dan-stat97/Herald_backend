@@ -1,5 +1,7 @@
 # Herald Social - Django Backend API Requirements
 
+> Note: The current route-level backend API reference lives in [BACKEND_API_REFERENCE.md](/C:/Users/somto/Projects/Herald_backend/BACKEND_API_REFERENCE.md). This file is older planning/reference material and is not the authoritative endpoint inventory.
+
 **Target Audience**: Django backend developers building REST APIs  
 **Database Schema**: PostgreSQL (based on Supabase schema)  
 **Framework Recommendation**: Django REST Framework with Token Authentication
@@ -1144,3 +1146,4 @@ X-RateLimit-Reset: 1640000000
 **Document Version**: 1.0  
 **Last Updated**: February 26, 2026  
 **Status**: Ready for Django Backend Implementation
+

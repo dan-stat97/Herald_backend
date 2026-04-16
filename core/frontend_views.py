@@ -1,7 +1,9 @@
 import re
 from collections import Counter
+from pathlib import Path
 
 from django.db import connection
+from django.views.generic import TemplateView
 from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -126,3 +128,55 @@ class UnifiedSearchView(APIView):
         posts_data = PostSerializer(posts_qs, many=True).data
 
         return Response({'users': users_data, 'posts': posts_data})
+
+
+class ApiDocsView(TemplateView):
+    template_name = "api/docs.html"
+
+    def _load_sections(self):
+        docs_path = Path(__file__).resolve().parent.parent / "BACKEND_API_REFERENCE.md"
+        content = docs_path.read_text(encoding="utf-8")
+
+        title = "Herald Backend API"
+        sections = []
+        current = None
+
+        for raw_line in content.splitlines():
+            line = raw_line.rstrip()
+            if line.startswith("# "):
+                title = line[2:].strip()
+                continue
+            if line.startswith("## "):
+                if current:
+                    current["body"] = "\n".join(current["lines"]).strip()
+                    sections.append(current)
+                current = {
+                    "slug": re.sub(r"[^a-z0-9]+", "-", line[3:].strip().lower()).strip("-"),
+                    "heading": line[3:].strip(),
+                    "lines": [],
+                }
+                continue
+            if current is not None:
+                current["lines"].append(line)
+
+        if current:
+            current["body"] = "\n".join(current["lines"]).strip()
+            sections.append(current)
+
+        endpoint_count = sum(
+            1
+            for section in sections
+            for line in section["body"].splitlines()
+            if line.startswith("| `")
+        )
+
+        return {
+            "title": title,
+            "sections": sections,
+            "endpoint_count": endpoint_count,
+        }
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(self._load_sections())
+        return context
