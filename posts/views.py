@@ -399,36 +399,10 @@ class PostViewSet(viewsets.ModelViewSet):
 			following_auth_ids = []
 
 		if not following_auth_ids:
-			default_ids = list(
-				UserProfile.objects.filter(username__in=default_usernames)
-				.exclude(id=profile.id)
-				.values_list('id', flat=True)
-			)
-			if not default_ids:
-				payload = {
-					'data': [],
-					'pagination': {'page': 1, 'limit': limit, 'has_more': False},
-					'message': 'Follow some users to see their posts here.',
-				}
-				cache.set(cache_key, payload, 20)
-				return Response(payload)
-
-			posts_qs = (
-				Post.objects
-				.select_related('author_id', 'author_id__user_id')
-				.filter(author_id__id__in=default_ids)
-				.order_by('-created_at')
-			)
-			# Fetch limit+1 to determine has_more without a COUNT(*) query
-			post_items = list(posts_qs[offset:offset + limit + 1])
-			has_more = len(post_items) > limit
-			post_items = post_items[:limit]
-			serializer = PostSerializer(post_items, many=True, context={**self.get_serializer_context(), '_post_list': post_items, '_author_summary_only': True})
 			payload = {
-				'data': serializer.data,
-				'pagination': {'page': page, 'limit': limit, 'has_more': has_more},
-				'message': 'Showing official Herald accounts until you follow people.',
-				'is_default_feed': True,
+				'data': [],
+				'pagination': {'page': page, 'limit': limit, 'has_more': False},
+				'message': 'Follow some users to see their posts here.',
 			}
 			cache.set(cache_key, payload, 20)
 			return Response(payload)
