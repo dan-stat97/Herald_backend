@@ -278,6 +278,21 @@ class PostViewSet(viewsets.ModelViewSet):
 		post.refresh_from_db(fields=['shares_count'])
 		return Response({'success': True, 'reposted': True, 'shares_count': post.shares_count})
 
+	@action(detail=True, methods=['delete', 'post'])
+	def unshare(self, request, pk=None):
+		post = self.get_object()
+		try:
+			profile = self._get_profile(request)
+		except UserProfile.DoesNotExist:
+			return Response({'error': 'User profile not found'}, status=404)
+
+		deleted, _ = PostRepost.objects.filter(post=post, user=profile).delete()
+		if deleted:
+			Post.objects.filter(pk=post.pk).update(shares_count=F('shares_count') - 1)
+			bump_post_timeline_cache_version()
+		post.refresh_from_db(fields=['shares_count'])
+		return Response({'success': True, 'reposted': False, 'shares_count': post.shares_count})
+
 	@action(detail=True, methods=['post'])
 	def bookmark(self, request, pk=None):
 		post = self.get_object()
