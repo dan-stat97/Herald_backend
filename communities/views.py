@@ -1,5 +1,6 @@
 from django.db import IntegrityError
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework import permissions, status, views
 from rest_framework.response import Response
 
@@ -124,6 +125,14 @@ def _serialize_post(post, liked_ids=None, include_comments=False):
         comments = post.comments.select_related('author').order_by('created_at')[:3]
         data['comments'] = [_serialize_comment(c) for c in comments]
     return data
+
+
+def _community_feed_score(post, now):
+    age_hours = max((now - post.created_at).total_seconds() / 3600, 0)
+    freshness = max(0, 72 - min(age_hours, 72)) / 72
+    engagement = min(post.comments_count or 0, 20) * 3 + min(post.likes_count or 0, 40) * 1.5
+    pinned_boost = 100 if post.is_pinned else 0
+    return pinned_boost + (freshness * 25) + engagement
 
 
 def _serialize_comment(comment):
@@ -759,3 +768,49 @@ class CommunityInviteRespondView(views.APIView):
             'is_member':    action == 'accept',
             'member_count': community.member_count,
         })
+
+
+# ── Community feed (posts from all joined communities) ────────────────────────
+
+class CommunityFeedView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        profile = _get_profile(request.user)
+
+        member_ids = list(
+            CommunityMember.objects.filter(user=profile).values_list('community_id', flat=True)
+        )
+        if not member_ids:
+            return Response({'results': [], 'count': 0})
+
+        candidates = list(
+            CommunityPost.objects.filter(community_id__in=member_ids)
+            .select_related('author', 'community')
+            .order_by('-is_pinned', '-created_at')[:150]
+        )
+
+        now = timezone.now()
+        posts = sorted(
+            candidates,
+            key=lambda post: (_community_feed_score(post, now), post.created_at.timestamp()),
+            reverse=True,
+        )[:60]
+
+        liked_ids = set(
+            CommunityPostLike.objects.filter(
+                user=profile, post_id__in=[p.id for p in posts]
+            ).values_list('post_id', flat=True)
+        )
+
+        data = []
+        for post in posts:
+            post_data = _serialize_post(post, liked_ids)
+            post_data['community'] = {
+                'id':       str(post.community.id),
+                'name':     post.community.name,
+                'category': post.community.category,
+            }
+            data.append(post_data)
+
+        return Response({'results': data, 'count': len(data)})
