@@ -102,8 +102,11 @@ urlpatterns = [
     # API Root - Documentation
     path('v1/', api_root, name='api-root'),
     path('v1/health/', ApiHealthView.as_view(), name='api-health'),
+    path('v1/health', ApiHealthView.as_view(), name='api-health-no-slash'),
     path('v1/health/db/', ApiHealthDbView.as_view(), name='api-health-db'),
+    path('v1/health/db', ApiHealthDbView.as_view(), name='api-health-db-no-slash'),
     path('v1/health/auth/', ApiHealthAuthView.as_view(), name='api-health-auth'),
+    path('v1/health/auth', ApiHealthAuthView.as_view(), name='api-health-auth-no-slash'),
     path('v1/docs/', ApiDocsView.as_view(), name='api-docs'),
     path('v1/docs', ApiDocsView.as_view(), name='api-docs-no-slash'),
     path('v1/trending/topics/', TrendingTopicsView.as_view(), name='trending-topics'),
