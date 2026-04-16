@@ -228,6 +228,7 @@ These resources are mounted through DRF routers. Collection/detail routes exist 
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/communities/` | Public | List communities |
 | `POST` | `/api/v1/communities/` | Auth | Create community |
+| `GET` | `/api/v1/communities/feed/` | Auth | Home feed of posts from joined communities |
 | `GET` | `/api/v1/communities/{community_id}/` | Public | Community detail |
 | `PATCH` | `/api/v1/communities/{community_id}/` | Auth | Update community |
 | `DELETE` | `/api/v1/communities/{community_id}/` | Auth | Delete community |
