@@ -430,6 +430,7 @@ class NewsArticle(models.Model):
     source_url = models.URLField(null=True, blank=True)
     image_url = models.URLField(null=True, blank=True)
     likes_count = models.IntegerField(default=0)
+    views_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

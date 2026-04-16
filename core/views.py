@@ -1,6 +1,7 @@
 # core/views.py
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
+from django.db.models import F
 from rest_framework import viewsets, permissions, status
 from rest_framework.views import APIView
 from rest_framework.decorators import action
@@ -171,7 +172,7 @@ class NewsArticleSerializer(serializers.ModelSerializer):
         model = NewsArticle
         fields = [
             'id', 'title', 'summary', 'content', 'source', 'source_type',
-            'image_url', 'external_url', 'published_at', 'likes_count', 'category',
+            'image_url', 'external_url', 'published_at', 'likes_count', 'views_count', 'category',
             'is_liked', 'is_bookmarked',
         ]
 
@@ -269,6 +270,13 @@ class NewsViewSet(viewsets.ReadOnlyModelViewSet):
             return queryset
         except Exception:
             return NewsArticle.objects.none()
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        NewsArticle.objects.filter(pk=instance.pk).update(views_count=F('views_count') + 1)
+        instance.views_count = (instance.views_count or 0) + 1
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
 
 class NewsBookmarksView(APIView):

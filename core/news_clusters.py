@@ -3,7 +3,7 @@ import re
 from collections import Counter, defaultdict
 from datetime import timedelta
 
-from django.db.models import Q
+from django.db.models import F, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions
@@ -90,6 +90,7 @@ def _serialize_article(article, request=None):
         'external_url': article.source_url,
         'published_at': article.created_at.isoformat(),
         'likes_count': article.likes_count,
+        'views_count': getattr(article, 'views_count', 0),
         'is_liked': is_liked,
         'is_bookmarked': is_bookmarked,
         'category': article.category,
@@ -253,6 +254,8 @@ class NewsArticleContextView(APIView):
 
     def get(self, request, article_id):
         article = get_object_or_404(NewsArticle, id=article_id)
+        NewsArticle.objects.filter(pk=article.pk).update(views_count=F('views_count') + 1)
+        article.views_count = (article.views_count or 0) + 1
         topic_counter = _build_topic_counter()
         topic, posts_count = _select_topic(article, topic_counter)
 
