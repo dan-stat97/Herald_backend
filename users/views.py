@@ -9,7 +9,6 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import IntegrityError
 from django.db.models import DateTimeField, Exists, OuterRef, Q, Subquery
-from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from rest_framework import generics, permissions, status, viewsets, views
 from rest_framework.decorators import action
@@ -629,20 +628,49 @@ class UserPostsView(views.APIView):
                 .order_by('-created_at')
             )
         else:
-            posts = (
+            authored_posts = list(
                 base_posts
-                .filter(Q(author_id=profile) | Q(reposts__user=profile))
+                .filter(author_id=profile)
+                .order_by('-created_at')[:limit]
+            )
+            reposted_posts = list(
+                base_posts
+                .filter(reposts__user=profile)
+                .exclude(author_id=profile)
                 .annotate(
                     profile_reposted_at=Subquery(reposted_at_subquery, output_field=DateTimeField()),
                     profile_reposted=Exists(PostRepost.objects.filter(post=OuterRef('pk'), user=profile)),
-                    profile_activity_at=Coalesce(
-                        Subquery(reposted_at_subquery, output_field=DateTimeField()),
-                        'created_at',
-                    ),
                 )
-                .order_by('-profile_activity_at', '-created_at')
-                .distinct()
+                .order_by('-profile_reposted_at', '-created_at')
+                .distinct()[:limit]
             )
+
+            merged_posts = []
+            seen_post_ids = set()
+
+            for post in authored_posts:
+                post.profile_reposted = False
+                post.profile_reposted_at = None
+                post.profile_activity_at = post.created_at
+                seen_post_ids.add(post.id)
+                merged_posts.append(post)
+
+            for post in reposted_posts:
+                if post.id in seen_post_ids:
+                    continue
+                post.profile_reposted = True
+                post.profile_activity_at = getattr(post, 'profile_reposted_at', None) or post.created_at
+                seen_post_ids.add(post.id)
+                merged_posts.append(post)
+
+            merged_posts.sort(
+                key=lambda post: (
+                    getattr(post, 'profile_activity_at', None) or post.created_at,
+                    post.created_at,
+                ),
+                reverse=True,
+            )
+            posts = merged_posts[:limit]
 
         from posts.serializers import PostSerializer
 
