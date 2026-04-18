@@ -16,7 +16,9 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from core.pagination import StandardPagination
 from .models import User as UserProfile
+from .query_utils import optimize_user_profile_queryset
 from .serializers import UserProfileSerializer, UserReplySerializer, UserSignupSerializer
 from posts.cache_utils import get_post_timeline_cache_version
 from posts.models import Comment, Post, PostRepost
@@ -266,9 +268,10 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardPagination
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = optimize_user_profile_queryset(super().get_queryset(), self.request.user)
         username = self.request.query_params.get('username')
         if username:
             queryset = queryset.filter(username=username)

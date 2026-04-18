@@ -51,6 +51,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
             return obj.email
 
     def get_followers_count(self, obj):
+        annotated_value = getattr(obj, 'followers_count_annotated', None)
+        if annotated_value is not None:
+            return int(annotated_value)
         try:
             from core.models import Follow
             legacy_profile = get_legacy_profile_for_user_profile(obj)
@@ -61,6 +64,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
             return 0
 
     def get_following_count(self, obj):
+        annotated_value = getattr(obj, 'following_count_annotated', None)
+        if annotated_value is not None:
+            return int(annotated_value)
         try:
             from core.models import Follow
             legacy_profile = get_legacy_profile_for_user_profile(obj)
@@ -71,6 +77,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
             return 0
 
     def get_posts_count(self, obj):
+        annotated_value = getattr(obj, 'posts_count_annotated', None)
+        if annotated_value is not None:
+            return int(annotated_value)
         try:
             from posts.models import Post
             return Post.objects.filter(author_id=obj).count()
@@ -78,6 +87,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
             return 0
 
     def get_is_following(self, obj):
+        annotated_value = getattr(obj, 'is_following_annotated', None)
+        if annotated_value is not None:
+            return bool(annotated_value)
         request = self.context.get('request') if hasattr(self, 'context') else None
         if not request or not getattr(request, 'user', None) or not request.user.is_authenticated:
             return False
