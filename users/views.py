@@ -271,7 +271,10 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     pagination_class = StandardPagination
 
     def get_queryset(self):
-        queryset = optimize_user_profile_queryset(super().get_queryset(), self.request.user)
+        queryset = optimize_user_profile_queryset(
+            super().get_queryset().order_by('-reputation', '-created_at'),
+            self.request.user,
+        )
         username = self.request.query_params.get('username')
         if username:
             queryset = queryset.filter(username=username)

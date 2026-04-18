@@ -1,4 +1,13 @@
 from django.db.models import BooleanField, Count, Exists, IntegerField, OuterRef, Subquery, Value
+from django.db.models import (
+    BooleanField,
+    Count,
+    Exists,
+    IntegerField,
+    OuterRef,
+    Subquery,
+    Value,
+)
 from django.db.models.functions import Coalesce
 
 from core.models import Follow, Profiles
