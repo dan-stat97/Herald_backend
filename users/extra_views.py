@@ -13,7 +13,7 @@ from core.pagination import StandardPagination
 from posts.models import Post
 from tasks.models import UserTask
 from users.models import User as UserProfile
-from users.query_utils import optimize_user_profile_queryset
+from users.query_utils import attach_user_profile_metrics, optimize_user_profile_queryset
 from users.serializers import UserProfileSerializer
 from wallets.models import Transaction, Wallet
 
@@ -48,9 +48,8 @@ class UserSuggestionsView(APIView):
             except UserProfile.DoesNotExist:
                 pass
 
-        queryset = optimize_user_profile_queryset(queryset, request.user)
-        users = UserProfileSerializer(queryset[:limit], many=True).data
-        return Response(_annotate_is_following(users, request.user))
+        users = attach_user_profile_metrics(queryset[:limit], request.user)
+        return Response(UserProfileSerializer(users, many=True, context={'request': request}).data)
 
 
 class UserSearchView(APIView):
@@ -62,13 +61,12 @@ class UserSearchView(APIView):
             return Response([])
 
         limit = min(int(request.query_params.get("limit", 20)), 100)
-        users = UserProfile.objects.filter(
+        users_queryset = optimize_user_profile_queryset(UserProfile.objects.filter(
             Q(username__icontains=query) | Q(display_name__icontains=query)
-        ).order_by("-reputation", "username")[:limit]
+        ).order_by("-reputation", "username"))
 
-        users = optimize_user_profile_queryset(users, request.user)
-        data = UserProfileSerializer(users, many=True).data
-        return Response(_annotate_is_following(data, request.user))
+        users = attach_user_profile_metrics(users_queryset[:limit], request.user)
+        return Response(UserProfileSerializer(users, many=True, context={'request': request}).data)
 
 
 class UserSettingsView(APIView):

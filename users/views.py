@@ -18,7 +18,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from core.pagination import StandardPagination
 from .models import User as UserProfile
-from .query_utils import optimize_user_profile_queryset
+from .query_utils import attach_user_profile_metrics, optimize_user_profile_queryset
 from .serializers import UserProfileSerializer, UserReplySerializer, UserSignupSerializer
 from posts.cache_utils import get_post_timeline_cache_version
 from posts.models import Comment, Post, PostRepost
@@ -271,10 +271,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     pagination_class = StandardPagination
 
     def get_queryset(self):
-        queryset = optimize_user_profile_queryset(
-            super().get_queryset().order_by('-reputation', '-created_at'),
-            self.request.user,
-        )
+        queryset = optimize_user_profile_queryset(super().get_queryset().order_by('-reputation', '-created_at'))
         username = self.request.query_params.get('username')
         if username:
             queryset = queryset.filter(username=username)
@@ -295,6 +292,18 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             except (TypeError, ValueError):
                 pass
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            page_items = attach_user_profile_metrics(page, request.user)
+            serializer = self.get_serializer(page_items, many=True, context={'request': request})
+            return self.get_paginated_response(serializer.data)
+
+        items = attach_user_profile_metrics(queryset, request.user)
+        serializer = self.get_serializer(items, many=True, context={'request': request})
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get', 'patch', 'delete'], url_path='me')
     def me(self, request):
