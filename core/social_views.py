@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from .models import Follow, Profiles, Posts
 from .serializers import ProfileSerializer
 from .pagination import StandardPagination
+from posts.cache_utils import bump_post_timeline_cache_version
 import uuid
 
 class FollowViewSet(viewsets.GenericViewSet):
@@ -157,6 +158,7 @@ class BookmarkViewSet(viewsets.GenericViewSet):
             if created:
                 Post.objects.filter(pk=post.pk).update(bookmarks_count=F('bookmarks_count') + 1)
                 post.refresh_from_db(fields=['bookmarks_count'])
+                bump_post_timeline_cache_version()
             return Response({'success': True, 'bookmarked': True, 'bookmarks_count': post.bookmarks_count})
         except Post.DoesNotExist:
             return Response({'error': 'Post not found'}, status=404)
@@ -173,6 +175,7 @@ class BookmarkViewSet(viewsets.GenericViewSet):
             if deleted:
                 Post.objects.filter(pk=post.pk).update(bookmarks_count=F('bookmarks_count') - 1)
                 post.refresh_from_db(fields=['bookmarks_count'])
+                bump_post_timeline_cache_version()
             return Response({'success': True, 'bookmarked': False, 'bookmarks_count': post.bookmarks_count})
         except Post.DoesNotExist:
             return Response({'error': 'Post not found'}, status=404)
@@ -215,6 +218,7 @@ class BookmarkViewSet(viewsets.GenericViewSet):
 
             deleted, _ = PostBookmark.objects.filter(user=profile).delete()
             Post.objects.filter(pk__in=post_ids).update(bookmarks_count=F('bookmarks_count') - 1)
+            bump_post_timeline_cache_version()
             return Response({'success': True, 'cleared_count': deleted})
         except Exception:
             return Response({'error': 'Profile not found'}, status=404)
