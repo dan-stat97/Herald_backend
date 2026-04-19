@@ -102,6 +102,20 @@ IN_NETWORK_POOL  = 200   # posts from followed accounts
 OUT_NETWORK_POOL = 250   # posts from everyone else
 ANON_POOL        = 300   # no-auth / no-follows fallback
 
+# ── Social proof gate thresholds ──────────────────────────────────────────────
+# Twitter's gate makes sense with a large, active network.  On a small app (or
+# for users who follow very few people) the gate just empties the OON pool and
+# the feed collapses to only followed authors.
+#
+# Rules:
+#   • < SOCIAL_PROOF_MIN_NETWORK follows  → skip gate (tiny network)
+#   • < SOCIAL_PROOF_MIN_LIKED liked posts → skip gate (network hasn't liked enough)
+SOCIAL_PROOF_MIN_NETWORK = 10   # minimum follows before gate activates
+SOCIAL_PROOF_MIN_LIKED   = 20   # minimum network-liked posts before gate activates
+
+# Minimum OON posts after gating before we fall back to unfiltered global pool
+OON_FALLBACK_THRESHOLD = 8
+
 TOKEN_RE = re.compile(r"[A-Za-z0-9_#']+")
 
 
@@ -368,10 +382,16 @@ def passes_social_proof(
       2. The post author is followed by someone the viewer follows
          (second-degree follow — approximated via liked_by_network_post_ids)
 
-    If the viewer has no follows yet, all posts pass (new-user fallback).
+    Fallback cases that bypass the gate:
+      - No follows yet (new user)   — show everything so feed isn't empty
+      - Network has no liked posts  — small/new app; gate would zero-out OON pool
     """
     if not followed_ids:
-        return True  # new user — show everything
+        return True  # new user — no network to gate against
+    if len(followed_ids) < SOCIAL_PROOF_MIN_NETWORK:
+        return True  # tiny network — gate would overfit the feed
+    if len(liked_by_network_post_ids) < SOCIAL_PROOF_MIN_LIKED:
+        return True  # network is too sparse — don't zero-out OON candidates
     return post.id in liked_by_network_post_ids
 
 
@@ -490,15 +510,27 @@ def build_twitter_feed(request) -> list[Post]:
             author_id__user_id_id__in=followed_ids
         ).order_by('-created_at')[:OUT_NETWORK_POOL]
 
-        out_scored = sorted(
-            [
-                (_base_post_score(p, is_in_network=False, **score_kwargs), p)
-                for p in out_qs
-                # Hard gate: OON post must have social proof from viewer's network
-                if passes_social_proof(p, followed_ids, net_likes)
-            ],
-            key=lambda x: (x[0], x[1].created_at), reverse=True,
-        )
+        gated_out_scored = [
+            (_base_post_score(p, is_in_network=False, **score_kwargs), p)
+            for p in out_qs
+            if passes_social_proof(p, followed_ids, net_likes)
+        ]
+
+        # If the gate leaves too few out-of-network candidates, fall back to the
+        # broader pool so "For You" does not collapse into a quasi-following feed.
+        if len(gated_out_scored) < OON_FALLBACK_THRESHOLD:
+            out_scored = sorted(
+                [
+                    (_base_post_score(p, is_in_network=False, **score_kwargs), p)
+                    for p in out_qs
+                ],
+                key=lambda x: (x[0], x[1].created_at), reverse=True,
+            )
+        else:
+            out_scored = sorted(
+                gated_out_scored,
+                key=lambda x: (x[0], x[1].created_at), reverse=True,
+            )
 
         # ── Diversity pass on each pool independently ─────────────────────────
         in_posts  = _diversity_pass(in_scored)
