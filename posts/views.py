@@ -12,6 +12,7 @@ from .cache_utils import bump_post_timeline_cache_version, get_post_timeline_cac
 from .models import Post, PostLike, PostRepost, PostBookmark
 from .serializers import PostSerializer, PostCreateSerializer
 from .ranking import rank_feed_posts
+from .feed_view import PostFeedView as _PostFeedView
 from users.models import User as UserProfile
 from users.views import ensure_user_profile
 from core.pagination import StandardPagination
@@ -322,6 +323,11 @@ class PostViewSet(viewsets.ModelViewSet):
 			bump_post_timeline_cache_version()
 		post.refresh_from_db(fields=['bookmarks_count'])
 		return Response({'success': True, 'bookmarked': False, 'bookmarks_count': post.bookmarks_count})
+
+	@action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny], url_path='feed')
+	def feed(self, request):
+		"""Twitter-style algorithmic For You feed — delegates to PostFeedView."""
+		return _PostFeedView().get(request)
 
 	@action(detail=False, methods=['get'])
 	def my(self, request):

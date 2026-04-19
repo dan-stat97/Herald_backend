@@ -5,15 +5,33 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.pagination import StandardPagination
 from users.models import User as UserProfile
 from wallets.models import Transaction, Wallet
 
 from .models import Order, Product
 
+STORE_PAGE_SIZE = 60
+
+
+def _serialize_product(item: Product) -> dict:
+    return {
+        "id": str(item.id),
+        "name": item.name,
+        "description": item.description,
+        "category": item.category,
+        "price": str(item.price),
+        "image_url": item.image_url,
+        "seller": item.seller.username if item.seller else None,
+        "created_at": item.created_at,
+    }
+
 
 class StoreProductsView(APIView):
-    permission_classes = [permissions.AllowAny]
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [permissions.IsAuthenticated()]
+        return [permissions.AllowAny()]
 
     def get(self, request):
         queryset = Product.objects.all().order_by("-created_at")
@@ -25,22 +43,39 @@ class StoreProductsView(APIView):
         if search:
             queryset = queryset.filter(Q(name__icontains=search) | Q(description__icontains=search))
 
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(queryset, request)
+        # Sliced fetch — no COUNT(*), no joins, just the rows we need
+        products = queryset[:STORE_PAGE_SIZE]
+        return Response({"results": [_serialize_product(p) for p in products]})
 
-        data = [
-            {
-                "id": str(item.id),
-                "name": item.name,
-                "description": item.description,
-                "category": item.category,
-                "price": str(item.price),
-                "image_url": item.image_url,
-                "created_at": item.created_at,
-            }
-            for item in page
-        ]
-        return paginator.get_paginated_response(data)
+    def post(self, request):
+        name = request.data.get("name", "").strip()
+        if not name:
+            return Response({"error": "name is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        price_raw = request.data.get("price", 0)
+        try:
+            price = float(price_raw)
+            if price < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response({"error": "price must be a non-negative number"}, status=status.HTTP_400_BAD_REQUEST)
+
+        category = request.data.get("category", "general").strip() or "general"
+
+        try:
+            seller = UserProfile.objects.get(user_id=request.user)
+        except UserProfile.DoesNotExist:
+            return Response({"error": "User profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        product = Product.objects.create(
+            seller=seller,
+            name=name,
+            description=request.data.get("description", "").strip() or None,
+            category=category,
+            price=price,
+            image_url=request.data.get("image_url") or None,
+        )
+        return Response(_serialize_product(product), status=status.HTTP_201_CREATED)
 
 
 class StoreCheckoutView(APIView):

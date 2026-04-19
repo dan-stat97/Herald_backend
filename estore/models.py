@@ -5,12 +5,13 @@ import uuid
 
 class Product(models.Model):
 	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+	seller = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='listed_products')
 	name = models.CharField(max_length=200)
 	description = models.TextField(null=True, blank=True)
-	category = models.CharField(max_length=100)
+	category = models.CharField(max_length=100, db_index=True)
 	price = models.DecimalField(max_digits=10, decimal_places=2)
 	image_url = models.URLField(null=True, blank=True)
-	created_at = models.DateTimeField(auto_now_add=True)
+	created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
 class Cart(models.Model):
 	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
