@@ -632,9 +632,21 @@ class UserPostsView(views.APIView):
             .order_by('-created_at')
             .values('created_at')[:1]
         )
+        liked_at_subquery = (
+            PostLike.objects
+            .filter(post=OuterRef('pk'), user=profile)
+            .order_by('-created_at')
+            .values('created_at')[:1]
+        )
 
         if tab == 'likes':
-            posts = base_posts.filter(likes__user=profile).order_by('-likes__created_at').distinct()
+            posts = (
+                base_posts
+                .filter(likes__user=profile)
+                .annotate(profile_liked_at=Subquery(liked_at_subquery, output_field=DateTimeField()))
+                .order_by('-profile_liked_at', '-created_at')
+                .distinct()
+            )
         elif tab == 'media':
             posts = (
                 base_posts.filter(author_id=profile)
