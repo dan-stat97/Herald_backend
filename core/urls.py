@@ -7,6 +7,7 @@ from .views import (
     CommunityViewSet, CauseViewSet, NewsBookmarksView,
 )
 from notifications.views import NotificationViewSet
+from posts.feed_view import PostFeedView
 from posts.views import PostViewSet
 from wallets.views import WalletViewSet
 from wallets.transfer import WalletTransferView
@@ -114,7 +115,7 @@ urlpatterns = [
     path('v1/search/users/', UserSearchView.as_view(), name='search-users'),
     path('v1/search/posts/', SearchPostsView.as_view(), name='search-posts'),
     path('v1/search/', UnifiedSearchView.as_view(), name='unified-search'),
-    
+
     # Auth endpoints (from users app)
     path('v1/auth/', include('users.urls')),
     
@@ -131,6 +132,10 @@ urlpatterns = [
     path('v1/notifications/clear-all/', NotificationViewSet.as_view({'delete': 'clear_all'}), name='notifications-clear-all'),
     path('v1/notifications/<uuid:pk>/mark_read/', NotificationViewSet.as_view({'post': 'mark_read', 'patch': 'mark_read'}), name='notifications-mark-read'),
     path('v1/notifications/<uuid:pk>/mark_as_read/', NotificationViewSet.as_view({'post': 'mark_as_read'}), name='notifications-mark-as-read'),
+
+    # Dedicated algorithmic home feed
+    path('v1/posts/feed/', PostFeedView.as_view(), name='posts-feed'),
+    path('v1/posts/feed', PostFeedView.as_view(), name='posts-feed-no-slash'),
 
     # Main v1 API endpoints
     path('v1/', include(router_v1.urls)),

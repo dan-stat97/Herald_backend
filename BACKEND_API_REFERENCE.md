@@ -120,23 +120,116 @@ These resources are mounted through DRF routers. Collection/detail routes exist 
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/posts/` | Public | Main post feed / list |
+| `GET` | `/api/v1/posts/feed/` | Public | **Algorithmic For You feed** (see below) |
+| `GET` | `/api/v1/posts/` | Public | Global post list (chronological / sorted) |
 | `POST` | `/api/v1/posts/` | Auth | Create post |
 | `GET` | `/api/v1/posts/{post_id}/` | Public | Post detail |
 | `PATCH` | `/api/v1/posts/{post_id}/` | Auth | Update post |
 | `DELETE` | `/api/v1/posts/{post_id}/` | Auth | Delete post |
-| `GET` | `/api/v1/posts/trending/` | Public | Trending posts |
-| `GET` | `/api/v1/posts/following/` | Auth | Following-only feed |
+| `GET` | `/api/v1/posts/trending/` | Public | Trending posts (48 h engagement window) |
+| `GET` | `/api/v1/posts/following/` | Auth | Chronological feed of followed accounts |
 | `POST` | `/api/v1/posts/{post_id}/like/` | Auth | Like post |
-| `DELETE` | `/api/v1/posts/{post_id}/like/` | Auth | Unlike using same route |
-| `POST` | `/api/v1/posts/{post_id}/unlike/` | Auth | Explicit unlike alias |
-| `POST` | `/api/v1/posts/{post_id}/share/` | Auth | Repost/share post |
+| `DELETE` | `/api/v1/posts/{post_id}/like/` | Auth | Unlike |
+| `POST` | `/api/v1/posts/{post_id}/unlike/` | Auth | Unlike alias |
+| `POST` | `/api/v1/posts/{post_id}/share/` | Auth | Repost / share |
 | `POST` | `/api/v1/posts/{post_id}/bookmark/` | Auth | Bookmark post |
 | `POST` | `/api/v1/posts/{post_id}/unbookmark/` | Auth | Remove bookmark |
-| `GET` | `/api/v1/posts/{post_id}/comments/` | Public | List post comments/replies |
-| `POST` | `/api/v1/posts/{post_id}/comments/` | Auth | Create comment/reply |
+| `GET` | `/api/v1/posts/{post_id}/comments/` | Public | List post comments |
+| `POST` | `/api/v1/posts/{post_id}/comments/` | Auth | Create comment / reply |
 | `POST` | `/api/v1/posts/scheduled/` | Auth | Create scheduled post |
 | `GET` | `/api/v1/posts/scheduled/me/` | Auth | My scheduled posts |
+
+---
+
+### GET `/api/v1/posts/feed/` — Algorithmic For You Feed
+
+The primary feed endpoint for the app's **For You** tab. Returns a personalised ranked blend of in-network and out-of-network posts, similar to X's For You algorithm.
+
+**Authentication:** Optional — authenticated users get personalised results, anonymous users get global ranking.
+
+**Query parameters**
+
+| Param | Type | Default | Description |
+| --- | --- | --- | --- |
+| `page` | int | 1 | Page number |
+| `limit` | int | 20 | Results per page (max 50) |
+
+**Response `200`**
+
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "content": "post text",
+      "media_url": "https://...",
+      "media_urls": [],
+      "media_type": "image",
+      "likes_count": 14,
+      "comments_count": 3,
+      "shares_count": 2,
+      "bookmarks_count": 1,
+      "views_count": 120,
+      "httn_earned": 25,
+      "is_liked": false,
+      "is_reposted": false,
+      "is_bookmarked": false,
+      "created_at": "2025-01-01T00:00:00Z",
+      "author": {
+        "id": "uuid",
+        "username": "joel",
+        "display_name": "Joel",
+        "avatar_url": "https://...",
+        "is_verified": false,
+        "is_creator": false,
+        "tier": null
+      }
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "has_more": true,
+    "total": 420,
+    "total_pages": 21
+  }
+}
+```
+
+**Ranking algorithm**
+
+Each post receives a score combining:
+
+| Signal | Weight | Notes |
+| --- | --- | --- |
+| Freshness | up to +42 | Decays over 96 hours |
+| Engagement velocity | ×3.8 | `(likes + comments×2.2 + shares×3.4 + bookmarks×2.8) / age^0.72` |
+| Followed author | +34 | Direct follow of the post's author |
+| Previously engaged author | +18 | You liked/reposted/bookmarked this author before |
+| Liked by someone you follow | +14 | Social proof from your network |
+| Second-degree follow | up to +14 | Mutual connections vouch for the author |
+| Interest / topic match | +8.5 per overlap | Based on your interests and past engagement |
+| Hashtag match | +5 per overlap | Hashtags in post vs. your interest terms |
+| Verified badge | +4 | |
+| Creator status | +3.5 | |
+| Premium tier | +1.5 | |
+| Author reputation | up to +7 | `reputation / 80`, capped |
+| Has media | +2.5 | Images or video |
+| Author is live | +12 | Currently streaming |
+
+**Blend strategy (authenticated users with follows)**
+
+- ~40% **in-network**: recent posts from accounts you follow, scored and ranked
+- ~60% **out-of-network**: posts from accounts you don't follow, scored and ranked
+- A diversity pass prevents the same author appearing more than twice in any 5-post window
+
+**Caching**
+
+Responses are cached per user per page for **30 seconds**. Cache is invalidated on any post create, delete, like, or repost event (`bump_post_timeline_cache_version()`).
+
+**`GET /api/v1/posts/following/` — Following Tab**
+
+Chronological feed of posts exclusively from accounts the authenticated user follows. No ranking applied — newest first. Uses the same `has_more` pagination pattern.
 
 ## Comments / Replies
 
@@ -280,28 +373,163 @@ These resources are mounted through DRF routers. Collection/detail routes exist 
 | `PATCH` | `/api/v1/ads/campaigns/{campaign_id}/` | Auth | Update campaign |
 | `DELETE` | `/api/v1/ads/campaigns/{campaign_id}/` | Auth | Delete campaign |
 
-## Store / Commerce
+## Marketplace
 
-| Method | Path | Auth | Purpose |
+The Marketplace lets users browse, list, and purchase digital and physical products. Prices are denominated in **Espees** (the platform currency, stored as `espees` on the wallet). The `price` field is always a decimal string in API responses.
+
+### Currency
+
+All prices are in Espees. The app displays the unit as `HTTN`. The wallet field is `wallet.espees`. Purchases deduct directly from the buyer's wallet balance.
+
+### Categories
+
+Valid `category` values: `nfts`, `tools`, `subscriptions`, `merchandise`, `digital`, `courses`, `general`.
+
+---
+
+### GET `/api/v1/store/products/`
+
+Browse marketplace listings. No authentication required.
+
+**Query parameters**
+
+| Param | Type | Description |
+| --- | --- | --- |
+| `category` | string | Filter by category (see Categories above) |
+| `search` | string | Full-text search on `name` and `description` |
+
+**Response `200`**
+
+```json
+{
+  "results": [
+    {
+      "id": "uuid",
+      "name": "Herald Premium Monthly",
+      "description": "Unlock verified badge eligibility, unlimited scheduling...",
+      "category": "subscriptions",
+      "price": "500.00",
+      "image_url": "https://...",
+      "seller": "username_or_null",
+      "created_at": "2025-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+Returns up to 60 products ordered by newest first. No pagination cursor — pull-to-refresh to get new listings.
+
+---
+
+### POST `/api/v1/store/products/`
+
+List a product on the marketplace. Requires authentication.
+
+**Request body**
+
+```json
+{
+  "name": "My Digital Asset",
+  "description": "Optional description",
+  "price": 250,
+  "category": "digital",
+  "image_url": "https://..."
+}
+```
+
+| Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/products/` | Public | Product list |
-| `POST` | `/api/v1/products/` | Auth | Create product |
-| `GET` | `/api/v1/products/{product_id}/` | Public | Product detail |
-| `PATCH` | `/api/v1/products/{product_id}/` | Auth | Update product |
-| `DELETE` | `/api/v1/products/{product_id}/` | Auth | Delete product |
-| `GET` | `/api/v1/orders/` | Auth | Order list |
-| `POST` | `/api/v1/orders/` | Auth | Create order |
-| `GET` | `/api/v1/orders/{order_id}/` | Auth | Order detail |
-| `PATCH` | `/api/v1/orders/{order_id}/` | Auth | Update order |
-| `DELETE` | `/api/v1/orders/{order_id}/` | Auth | Delete order |
-| `GET` | `/api/v1/cart/` | Auth | Cart |
-| `POST` | `/api/v1/cart/` | Auth | Update cart |
-| `GET` | `/api/v1/cart/items/` | Auth | Cart items |
-| `POST` | `/api/v1/cart/items/` | Auth | Add cart item |
-| `DELETE` | `/api/v1/cart/items/{product_id}/` | Auth | Remove cart item |
-| `GET` | `/api/v1/store/products/` | Public | Store product alias |
-| `POST` | `/api/v1/store/checkout/` | Auth | Checkout |
-| `GET` | `/api/v1/store/orders/me/` | Auth | My store orders |
+| `name` | string | Yes | Max 200 chars |
+| `description` | string | No | |
+| `price` | number | Yes | Decimal ≥ 0. `0` = free |
+| `category` | string | No | Defaults to `general` |
+| `image_url` | string | No | Must be a valid URL |
+
+**Response `201`**
+
+Same shape as a single product object from the list response, with `seller` set to the authenticated user's username.
+
+**Errors**
+
+| Status | Condition |
+| --- | --- |
+| `400` | Missing `name` or invalid `price` |
+| `404` | Authenticated user has no profile |
+
+---
+
+### POST `/api/v1/store/checkout/`
+
+Purchase one or more products using the buyer's Espees wallet. Requires authentication.
+
+**Request body**
+
+```json
+{
+  "items": [
+    { "product_id": "uuid", "quantity": 1 }
+  ],
+  "total_amount": 500,
+  "payment_type": "wallet"
+}
+```
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `items` | array | Yes | At least one item |
+| `total_amount` | number | Yes | Must be > 0 |
+| `payment_type` | string | Yes | Only `wallet` is supported |
+
+**Response `201`**
+
+```json
+{
+  "id": "uuid",
+  "user_id": "uuid",
+  "items": [{ "product_id": "uuid", "quantity": 1 }],
+  "total_amount": "500.00",
+  "payment_type": "wallet",
+  "status": "completed",
+  "created_at": "2025-01-01T00:00:00Z",
+  "completed_at": "2025-01-01T00:00:00Z"
+}
+```
+
+`status` is `completed` when the wallet deduction succeeds. A `Transaction` record is also created with `transaction_type: "purchase"`.
+
+**Errors**
+
+| Status | Condition |
+| --- | --- |
+| `400` | Missing `items`, invalid `total_amount`, or insufficient Espees balance |
+| `404` | User profile or wallet not found |
+
+---
+
+### GET `/api/v1/store/orders/me/`
+
+Retrieve the authenticated user's purchase history. Requires authentication.
+
+**Response `200`**
+
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "items": [{ "product_id": "uuid", "quantity": 1 }],
+      "total_amount": "500.00",
+      "payment_type": "wallet",
+      "status": "completed",
+      "created_at": "2025-01-01T00:00:00Z",
+      "completed_at": "2025-01-01T00:00:00Z"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 5, "total_pages": 1 }
+}
+```
+
+Order statuses: `pending`, `completed`, `cancelled`.
 
 ## Media
 
