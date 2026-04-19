@@ -46,9 +46,16 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         post_id = self.kwargs.get('post_id') or self.request.query_params.get('post_id')
+        sort = (self.request.query_params.get('sort') or 'relevant').lower()
         base = Comment.objects.select_related('author', 'author__user_id', 'parent_comment').all()
+        if sort == 'recent':
+            ordering = ('-created_at',)
+        elif sort == 'liked':
+            ordering = ('-likes_count', '-created_at')
+        else:
+            ordering = ('-likes_count', '-replies_count', '-shares_count', '-created_at')
         if post_id:
-            return base.filter(post__id=post_id).order_by('created_at')
+            return base.filter(post__id=post_id).order_by(*ordering)
         return base.order_by('-created_at')
 
     def list(self, request, *args, **kwargs):
@@ -73,7 +80,8 @@ class CommentViewSet(viewsets.ModelViewSet):
             limit = 20
 
         cache_version = _comment_cache_version(post_id)
-        cache_key = f'post-comments:{post_id}:page:{page_number}:limit:{limit}:v{cache_version}'
+        sort = (request.query_params.get('sort') or 'relevant').lower()
+        cache_key = f'post-comments:{post_id}:sort:{sort}:page:{page_number}:limit:{limit}:v{cache_version}'
         cached_payload = cache.get(cache_key)
         if cached_payload is not None:
             return Response(cached_payload)
@@ -125,6 +133,8 @@ class CommentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Authentication required.")
         if comment.author != profile:
             raise PermissionDenied("You can only delete your own comments.")
+        if getattr(profile, 'tier', 'free') == 'free':
+            raise PermissionDenied("Comment deletion is available on pro plans only.")
         post = comment.post
         parent = comment.parent_comment
         response = super().destroy(request, *args, **kwargs)
