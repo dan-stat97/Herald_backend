@@ -1,22 +1,13 @@
 """
 GET /v1/posts/feed/
 
-Twitter-style algorithmic "For You" feed.
+Algorithmic "For You" feed.
 
-Blend strategy (authenticated users with follows):
-  - In-network  (~40%): recent posts from accounts the user follows, scored
-                         with VERIFIED_IN_NETWORK_BOOST (×4.0)
-  - Out-of-network (~60%): algorithmically ranked posts from everyone else,
-                            social-proof gated, VERIFIED_OUT_NETWORK_BOOST (×2.0)
+Authenticated users receive a blended feed of:
+  - in-network posts from followed accounts
+  - out-of-network posts discovered by ranking
 
-Scoring signals (Twitter HomeGlobalParams calibration):
-  W_REPLY=13.5, W_BOOKMARK=2.0, W_RETWEET=1.0, W_LIKE=0.5, W_VIEW=0.005
-  + freshness decay: max(exp(-0.003 × age_minutes), 0.6)
-  + follow/engagement/interest/live boosts
-  + diversity pass: same author ≤ 2× in any 5-post window
-
-Anonymous / no-follows users receive pure global algorithmic ranking.
-Responses are cached per-user per-page for 30 seconds.
+Anonymous or no-follow users receive a globally ranked feed.
 """
 
 import math
@@ -27,6 +18,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .cache_utils import get_post_timeline_cache_version
+from .models import Post
 from .ranking import build_twitter_feed
 from .serializers import PostSerializer
 
@@ -39,35 +31,45 @@ class PostFeedView(APIView):
         page  (int, default 1)
         limit (int, default 20, max 50)
     """
+
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        # ── Parse params ──────────────────────────────────────────────────────
         try:
             limit = min(max(int(request.query_params.get('limit', 20)), 1), 50)
-            page  = max(int(request.query_params.get('page',  1)),  1)
+            page = max(int(request.query_params.get('page', 1)), 1)
         except (TypeError, ValueError):
             limit, page = 20, 1
 
-        # ── Cache lookup ──────────────────────────────────────────────────────
         cache_version = get_post_timeline_cache_version()
-        user_scope    = f"user:{request.user.id}" if getattr(request.user, 'is_authenticated', False) else 'anon'
-        cache_key     = f"feed:v2:{user_scope}:p{page}:l{limit}:v{cache_version}"
+        user_scope = f"user:{request.user.id}" if getattr(request.user, 'is_authenticated', False) else 'anon'
+        page_cache_key = f"feed:v2:{user_scope}:p{page}:l{limit}:v{cache_version}"
+        ranked_ids_cache_key = f"feed:v2:ranked-ids:{user_scope}:v{cache_version}"
 
-        cached = cache.get(cache_key)
-        if cached is not None:
-            return Response(cached)
+        cached_payload = cache.get(page_cache_key)
+        if cached_payload is not None:
+            return Response(cached_payload)
 
-        # ── Build ranked list via Twitter-style two-pool algorithm ────────────
-        ranked_posts = build_twitter_feed(request)
+        ranked_ids = cache.get(ranked_ids_cache_key)
+        if ranked_ids is None:
+            ranked_posts = build_twitter_feed(request)
+            ranked_ids = [post.id for post in ranked_posts]
+            cache.set(ranked_ids_cache_key, ranked_ids, 30)
 
-        # ── Paginate ──────────────────────────────────────────────────────────
-        total      = len(ranked_posts)
-        offset     = (page - 1) * limit
-        page_posts = ranked_posts[offset:offset + limit]
-        has_more   = total > offset + limit
+        total = len(ranked_ids)
+        offset = (page - 1) * limit
+        page_ids = ranked_ids[offset:offset + limit]
+        has_more = total > offset + limit
 
-        # ── Serialize ─────────────────────────────────────────────────────────
+        if page_ids:
+            page_map = {
+                post.id: post
+                for post in Post.objects.select_related('author_id', 'author_id__user_id').filter(id__in=page_ids)
+            }
+            page_posts = [page_map[post_id] for post_id in page_ids if post_id in page_map]
+        else:
+            page_posts = []
+
         serializer = PostSerializer(
             page_posts,
             many=True,
@@ -89,5 +91,5 @@ class PostFeedView(APIView):
             },
         }
 
-        cache.set(cache_key, payload, 30)
+        cache.set(page_cache_key, payload, 30)
         return Response(payload)
