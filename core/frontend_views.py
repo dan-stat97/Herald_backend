@@ -3,6 +3,7 @@ from collections import Counter
 from pathlib import Path
 
 from django.db import connection
+from django.db.models import Q
 from django.views.generic import TemplateView
 from rest_framework import permissions
 from rest_framework.response import Response
@@ -11,6 +12,58 @@ from rest_framework.views import APIView
 from posts.models import Post
 from posts.serializers import PostSerializer
 from core.pagination import StandardPagination
+
+
+SEARCH_TOKEN_SPLIT_RE = re.compile(r"[\s_-]+")
+
+
+def _normalized_search_variants(query: str) -> tuple[str, set[str], list[str]]:
+    raw = (query or "").strip()
+    cleaned = raw.lstrip("#").strip()
+    normalized = re.sub(r"\s+", " ", cleaned.replace("_", " ").replace("-", " ")).strip().lower()
+    if not normalized:
+        return "", set(), []
+
+    tokens = [token for token in SEARCH_TOKEN_SPLIT_RE.split(normalized) if token]
+    underscore = "_".join(tokens)
+    hyphen = "-".join(tokens)
+    spaced = " ".join(tokens)
+
+    variants = {
+        cleaned,
+        normalized,
+        spaced,
+        underscore,
+        hyphen,
+        f"#{underscore}",
+        f"#{hyphen}",
+        f"#{spaced}",
+    }
+    return normalized, {variant.lower() for variant in variants if variant}, tokens
+
+
+def _build_post_search_queryset(query: str):
+    normalized, variants, tokens = _normalized_search_variants(query)
+    if not normalized:
+        return Post.objects.none()
+
+    clause = Q()
+    for variant in variants:
+        clause |= Q(content__icontains=variant)
+
+    # If the literal variant misses, still allow "Super Eagles" to match
+    # "super_eagles" by requiring all tokens to be present somewhere.
+    if tokens:
+        token_clause = Q()
+        for token in tokens:
+            token_clause &= Q(content__icontains=token)
+        clause |= token_clause
+
+    return (
+        Post.objects.filter(clause)
+        .select_related("author_id", "author_id__user_id")
+        .order_by("-likes_count", "-comments_count", "-created_at")
+    )
 
 
 class ApiHealthView(APIView):
@@ -75,7 +128,7 @@ class SearchPostsView(APIView):
         if not query:
             return Response({"data": [], "pagination": {"page": 1, "limit": 20, "total": 0, "total_pages": 0}})
 
-        queryset = Post.objects.filter(content__icontains=query).select_related("author_id", "author_id__user_id").order_by("-created_at")
+        queryset = _build_post_search_queryset(query)
         paginator = StandardPagination()
         page = paginator.paginate_queryset(queryset, request)
         serializer = PostSerializer(page, many=True)
@@ -120,11 +173,8 @@ class UnifiedSearchView(APIView):
         else:
             users_data = [dict(u, is_following=False) for u in users_data]
 
-        # --- Posts (by content or hashtag) ---
-        search_term = query.lstrip('#')
-        posts_qs = Post.objects.filter(
-            content__icontains=search_term
-        ).select_related('author_id', 'author_id__user_id').order_by('-likes_count', '-created_at')[:limit * 2]
+        # --- Posts (normalized content / hashtag search) ---
+        posts_qs = _build_post_search_queryset(query)[:limit * 2]
         posts_data = PostSerializer(posts_qs, many=True).data
 
         return Response({'users': users_data, 'posts': posts_data})

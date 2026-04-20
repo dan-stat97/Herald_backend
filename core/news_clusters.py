@@ -41,6 +41,25 @@ def _clean_token(token):
     return token.strip('_')
 
 
+def _topic_search_variants(topic):
+    normalized = _clean_token(topic)
+    if not normalized:
+        return []
+    spaced = normalized.replace('_', ' ')
+    hyphenated = normalized.replace('_', '-')
+    parts = [part for part in normalized.split('_') if part]
+    variants = {
+        normalized,
+        spaced,
+        hyphenated,
+        f'#{normalized}',
+        f'#{hyphenated}',
+        f'#{spaced}',
+    }
+    variants.update(parts)
+    return [variant for variant in variants if variant]
+
+
 def _display_topic(topic):
     topic = (topic or '').replace('_', ' ').strip()
     return ' '.join(word.capitalize() for word in topic.split())
@@ -282,8 +301,15 @@ def _build_clusters(request, limit=12, article_limit=80, section=None):
 
 
 def _related_posts_for_topic(topic, limit=5):
-    queries = [Q(content__icontains=f'#{topic}'), Q(content__icontains=topic.replace('_', ' '))]
-    queryset = Post.objects.filter(queries[0] | queries[1]).select_related('author_id').order_by('-created_at')[:limit]
+    variants = _topic_search_variants(topic)
+    query = Q()
+    for variant in variants:
+        query |= Q(content__icontains=variant)
+    queryset = (
+        Post.objects.filter(query)
+        .select_related('author_id')
+        .order_by('-likes_count', '-comments_count', '-created_at')[:limit]
+    )
     data = []
     for post in queryset:
         data.append({

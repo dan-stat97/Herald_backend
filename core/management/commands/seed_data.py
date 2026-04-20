@@ -26,6 +26,7 @@ Usage:
 from datetime import timedelta
 from decimal import Decimal
 import random
+import re
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
@@ -569,6 +570,51 @@ STORY_PACKETS = [
     },
 ]
 
+TOPIC_TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
+TOPIC_STOP_WORDS = {
+    "the", "and", "for", "with", "this", "that", "from", "into", "across",
+    "major", "new", "live", "record", "records", "right", "now", "through",
+    "social", "herald", "draws", "recorded", "growing", "expands",
+}
+
+
+def _topic_tokens(*parts):
+    tokens = []
+    for part in parts:
+        for raw in TOPIC_TOKEN_RE.findall(str(part or "").lower().replace("-", " ")):
+            token = raw.strip("_")
+            if len(token) < 3 or token in TOPIC_STOP_WORDS:
+                continue
+            tokens.append(token)
+    return tokens
+
+
+def build_anchor_post_content(packet):
+    article = packet["article"]
+    tokens = []
+    seen = set()
+    for token in _topic_tokens(article.get("category"), article.get("title")):
+        if token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+
+    base_tokens = tokens[:6]
+    section_token = base_tokens[0] if base_tokens else "news"
+    pair_tags = []
+    if len(base_tokens) >= 2:
+        pair_tags.append(f"#{base_tokens[0]}_{base_tokens[1]}")
+    if len(base_tokens) >= 4:
+        pair_tags.append(f"#{base_tokens[2]}_{base_tokens[3]}")
+
+    inline_tags = " ".join(f"#{token}" for token in base_tokens)
+    paired = " ".join(pair_tags)
+    summary = article["content"][:140].rstrip(".")
+    return (
+        f"{article['title']} is driving conversation on Herald right now. "
+        f"{summary}. {inline_tags} {paired} #{section_token}_story"
+    ).strip()
+
 
 class Command(BaseCommand):
     help = "Seed official Herald users, posts, and news articles for the clustered news experience"
@@ -716,6 +762,21 @@ class Command(BaseCommand):
                     shares_count=3 + (packet_index % 4),
                     bookmarks_count=2 + (packet_index % 3),
                     httn_earned=15 + packet_index,
+                )
+                Post.objects.filter(pk=post.pk).update(created_at=created_at, updated_at=created_at)
+                created_count += 1
+
+            anchor_content = build_anchor_post_content(packet)
+            if not Post.objects.filter(author_id=profile, content=anchor_content).exists():
+                created_at = now - timedelta(hours=(packet_index * 9) + rng.randint(1, 3))
+                post = Post.objects.create(
+                    author_id=profile,
+                    content=anchor_content,
+                    likes_count=36 + (packet_index * 5),
+                    comments_count=8 + (packet_index % 4),
+                    shares_count=5 + (packet_index % 3),
+                    bookmarks_count=4 + (packet_index % 2),
+                    httn_earned=25 + packet_index,
                 )
                 Post.objects.filter(pk=post.pk).update(created_at=created_at, updated_at=created_at)
                 created_count += 1
