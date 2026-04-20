@@ -21,7 +21,7 @@ from .models import User as UserProfile
 from .query_utils import attach_user_profile_metrics, optimize_user_profile_queryset
 from .serializers import UserProfileSerializer, UserReplySerializer, UserSignupSerializer
 from posts.cache_utils import get_post_timeline_cache_version
-from posts.models import Comment, Post, PostRepost
+from posts.models import Comment, Post, PostLike, PostRepost
 
 AuthUser = get_user_model()
 KINGSCHAT_TOKEN_URL = 'https://connect.kingsch.at/developer/oauth2/token'
@@ -639,65 +639,73 @@ class UserPostsView(views.APIView):
             .values('created_at')[:1]
         )
 
-        if tab == 'likes':
-            posts = (
-                base_posts
-                .filter(likes__user=profile)
-                .annotate(profile_liked_at=Subquery(liked_at_subquery, output_field=DateTimeField()))
-                .order_by('-profile_liked_at', '-created_at')
-                .distinct()
-            )
-        elif tab == 'media':
-            posts = (
-                base_posts.filter(author_id=profile)
-                .exclude(media_url__isnull=True)
-                .exclude(media_url='')
-                .order_by('-created_at')
-            )
-        else:
-            authored_posts = list(
-                base_posts
-                .filter(author_id=profile)
-                .order_by('-created_at')[:limit]
-            )
-            reposted_posts = list(
-                base_posts
-                .filter(reposts__user=profile)
-                .exclude(author_id=profile)
-                .annotate(
-                    profile_reposted_at=Subquery(reposted_at_subquery, output_field=DateTimeField()),
-                    profile_reposted=Exists(PostRepost.objects.filter(post=OuterRef('pk'), user=profile)),
+        try:
+            if tab == 'likes':
+                posts = (
+                    base_posts
+                    .filter(likes__user=profile)
+                    .annotate(profile_liked_at=Subquery(liked_at_subquery, output_field=DateTimeField()))
+                    .order_by('-profile_liked_at', '-created_at')
+                    .distinct()
                 )
-                .order_by('-profile_reposted_at', '-created_at')
-                .distinct()[:limit]
-            )
+            elif tab == 'media':
+                media_filter = (
+                    (Q(media_url__isnull=False) & ~Q(media_url=''))
+                    | (Q(media_urls__isnull=False) & ~Q(media_urls=[]))
+                )
+                posts = (
+                    base_posts
+                    .filter(author_id=profile)
+                    .filter(media_filter)
+                    .order_by('-created_at')
+                )
+            else:
+                authored_posts = list(
+                    base_posts
+                    .filter(author_id=profile)
+                    .order_by('-created_at')[:limit]
+                )
+                reposted_posts = list(
+                    base_posts
+                    .filter(reposts__user=profile)
+                    .exclude(author_id=profile)
+                    .annotate(
+                        profile_reposted_at=Subquery(reposted_at_subquery, output_field=DateTimeField()),
+                        profile_reposted=Exists(PostRepost.objects.filter(post=OuterRef('pk'), user=profile)),
+                    )
+                    .order_by('-profile_reposted_at', '-created_at')
+                    .distinct()[:limit]
+                )
 
-            merged_posts = []
-            seen_post_ids = set()
+                merged_posts = []
+                seen_post_ids = set()
 
-            for post in authored_posts:
-                post.profile_reposted = False
-                post.profile_reposted_at = None
-                post.profile_activity_at = post.created_at
-                seen_post_ids.add(post.id)
-                merged_posts.append(post)
+                for post in authored_posts:
+                    post.profile_reposted = False
+                    post.profile_reposted_at = None
+                    post.profile_activity_at = post.created_at
+                    seen_post_ids.add(post.id)
+                    merged_posts.append(post)
 
-            for post in reposted_posts:
-                if post.id in seen_post_ids:
-                    continue
-                post.profile_reposted = True
-                post.profile_activity_at = getattr(post, 'profile_reposted_at', None) or post.created_at
-                seen_post_ids.add(post.id)
-                merged_posts.append(post)
+                for post in reposted_posts:
+                    if post.id in seen_post_ids:
+                        continue
+                    post.profile_reposted = True
+                    post.profile_activity_at = getattr(post, 'profile_reposted_at', None) or post.created_at
+                    seen_post_ids.add(post.id)
+                    merged_posts.append(post)
 
-            merged_posts.sort(
-                key=lambda post: (
-                    getattr(post, 'profile_activity_at', None) or post.created_at,
-                    post.created_at,
-                ),
-                reverse=True,
-            )
-            posts = merged_posts[:limit]
+                merged_posts.sort(
+                    key=lambda post: (
+                        getattr(post, 'profile_activity_at', None) or post.created_at,
+                        post.created_at,
+                    ),
+                    reverse=True,
+                )
+                posts = merged_posts[:limit]
+        except Exception as exc:
+            print(f'Error building user posts tab "{tab}": {exc}')
+            return Response([])
 
         from posts.serializers import PostSerializer
 
