@@ -26,6 +26,71 @@ This document is the current backend API reference for the Herald Django service
 | `GET` | `/api/v1/health/db/` | Public | Database health |
 | `GET` | `/api/v1/health/auth/` | Public | Auth health |
 
+## Explore
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/explore/for_you/` | Public | Explore For You guide |
+| `GET` | `/api/v1/explore/trending/` | Public | Explore Trending guide |
+| `GET` | `/api/v1/explore/news/` | Public | Explore News guide |
+| `GET` | `/api/v1/explore/sports/` | Public | Explore Sports guide |
+| `GET` | `/api/v1/explore/entertainment/` | Public | Explore Entertainment guide |
+
+### Explore tab structure
+
+Herald's Explore guide follows the same high-level shape X describes in its official Explore documentation:
+
+- `For You`: a personalized mix of recommended trends and posts
+- `Trending`: non-personalized trending topics
+- `News`, `Sports`, `Entertainment`: category-filtered story clusters
+
+`GET /api/v1/explore/for_you/`
+
+- Returns a backend-mixed guide of `topic` and `post` items
+- Uses Herald's feed ranker plus user-interest overlap to order items
+
+Example response:
+
+```json
+{
+  "tab": "for_you",
+  "items": [
+    {
+      "id": "topic-ai-0",
+      "type": "topic",
+      "topic": {
+        "name": "#ai",
+        "topic": "ai",
+        "tag": "#ai",
+        "posts_count": 122
+      }
+    },
+    {
+      "id": "post-uuid",
+      "type": "post",
+      "post": {
+        "id": "uuid",
+        "content": "post text"
+      }
+    }
+  ],
+  "topics": [],
+  "posts": []
+}
+```
+
+`GET /api/v1/explore/trending/`
+
+- Returns trending topics only
+- Intended for the Explore `Trending` tab
+
+`GET /api/v1/explore/news/`
+`GET /api/v1/explore/sports/`
+`GET /api/v1/explore/entertainment/`
+
+- Return server-classified news clusters for each section
+- The category decision is made on the backend from article metadata and content signals, not in the mobile client
+
 ## Authentication
 
 | Method | Path | Auth | Purpose |

@@ -52,6 +52,7 @@ from .feature_stub_views import (
 )
 from .news_interactions import NewsLikeView, NewsBookmarkView
 from .news_clusters import NewsClustersView, NewsArticleContextView
+from .explore_views import ExploreTabView
 from communities.joins import CommunityJoinView
 from communities.views import (
     CommunityListCreateView, CommunityDetailView,
@@ -115,6 +116,8 @@ urlpatterns = [
     path('v1/search/users/', UserSearchView.as_view(), name='search-users'),
     path('v1/search/posts/', SearchPostsView.as_view(), name='search-posts'),
     path('v1/search/', UnifiedSearchView.as_view(), name='unified-search'),
+    path('v1/explore/<str:tab>/', ExploreTabView.as_view(), name='explore-tab'),
+    path('v1/explore/<str:tab>', ExploreTabView.as_view(), name='explore-tab-no-slash'),
 
     # Auth endpoints (from users app)
     path('v1/auth/', include('users.urls')),

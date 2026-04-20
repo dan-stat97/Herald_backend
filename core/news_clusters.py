@@ -23,6 +23,17 @@ STOP_WORDS = {
     'this', 'those', 'today', 'under', 'very', 'what', 'when', 'where', 'which', 'while', 'with', 'would',
     'your', 'loveworld', 'healing', 'school', 'christian', 'external', 'social', 'media'
 }
+SPORTS_KEYWORDS = {
+    'sport', 'sports', 'football', 'soccer', 'basketball', 'nba', 'nfl', 'fifa', 'uefa',
+    'premier', 'league', 'match', 'goal', 'tennis', 'cricket', 'boxing', 'ufc', 'olympic',
+    'athletics', 'formula', 'motorsport', 'champions', 'laliga',
+}
+ENTERTAINMENT_KEYWORDS = {
+    'entertainment', 'movie', 'movies', 'film', 'music', 'album', 'artist', 'celebrity',
+    'show', 'tv', 'series', 'netflix', 'hollywood', 'award', 'festival', 'concert',
+    'cinema', 'streaming', 'actor', 'actress', 'comedy',
+}
+EXPLORE_SECTIONS = {'news', 'sports', 'entertainment'}
 
 
 def _clean_token(token):
@@ -66,6 +77,37 @@ def _article_summary(article):
     if not content:
         return None
     return content[:220] + ('...' if len(content) > 220 else '')
+
+
+def _includes_keyword(text, keywords):
+    return any(keyword in text for keyword in keywords)
+
+
+def classify_article_section(article):
+    explicit = _clean_token(getattr(article, 'category', '') or '')
+    if explicit in {'sport', 'sports'}:
+        return 'sports'
+    if explicit in {'entertainment', 'music', 'movies', 'movie', 'film', 'tv'}:
+        return 'entertainment'
+
+    haystack = ' '.join(
+        filter(
+            None,
+            [
+                getattr(article, 'title', ''),
+                getattr(article, 'content', ''),
+                getattr(article, 'category', ''),
+                getattr(article, 'source', ''),
+                getattr(article, 'source_type', ''),
+            ],
+        )
+    ).lower()
+
+    if _includes_keyword(haystack, SPORTS_KEYWORDS):
+        return 'sports'
+    if _includes_keyword(haystack, ENTERTAINMENT_KEYWORDS):
+        return 'entertainment'
+    return 'news'
 
 
 def _serialize_article(article, request=None):
@@ -122,6 +164,19 @@ def _build_topic_counter(post_limit=1200):
     return counter
 
 
+def build_trending_topics(limit=10):
+    topic_counter = _build_topic_counter()
+    return [
+        {
+            'name': f'#{topic}',
+            'topic': topic,
+            'tag': f'#{topic}',
+            'posts_count': count,
+        }
+        for topic, count in topic_counter.most_common(limit)
+    ]
+
+
 def _article_topic_candidates(article):
     candidates = []
     candidates.extend(_clean_token(tag) for tag in HASHTAG_PATTERN.findall(article.title or ''))
@@ -158,9 +213,15 @@ def _select_topic(article, topic_counter):
     return best_topic, max(best_score, 0)
 
 
-def _build_clusters(request, limit=12, article_limit=80):
+def _build_clusters(request, limit=12, article_limit=80, section=None):
+    section = (section or '').strip().lower()
+    if section and section not in EXPLORE_SECTIONS:
+        section = 'news'
+
     topic_counter = _build_topic_counter()
     articles = list(NewsArticle.objects.all().order_by('-created_at')[:article_limit])
+    if section:
+        articles = [article for article in articles if classify_article_section(article) == section]
 
     if not articles:
         return []
@@ -187,10 +248,11 @@ def _build_clusters(request, limit=12, article_limit=80):
         freshness_bonus = 1 / math.log(latest_seconds + 10, 10)
         score = topic_meta[topic]['posts_count'] * 3 + len(grouped_articles) * 4 + hero.likes_count + freshness_bonus
         clusters.append({
-            'id': topic,
+            'id': f'{section or "all"}:{topic}',
             'topic': topic,
             'display_name': topic_meta[topic]['display_name'],
             'tag': topic_meta[topic]['tag'],
+            'section': section or classify_article_section(hero),
             'posts_count': topic_meta[topic]['posts_count'],
             'articles_count': len(grouped_articles),
             'score': round(score, 2),
@@ -233,7 +295,8 @@ class NewsClustersView(APIView):
     def get(self, request):
         limit = min(int(request.query_params.get('limit', 12)), 24)
         search = (request.query_params.get('search') or '').strip().lower()
-        clusters = _build_clusters(request, limit=limit)
+        section = (request.query_params.get('section') or request.query_params.get('category') or '').strip().lower()
+        clusters = _build_clusters(request, limit=limit, section=section)
         if search:
             filtered = []
             for cluster in clusters:
