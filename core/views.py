@@ -25,6 +25,7 @@ from rest_framework import serializers
 from core.pagination import StandardPagination
 
 import uuid
+from .news_clusters import classify_article_section, build_section_query
 
 # Apply csrf_exempt to all views
 @method_decorator(csrf_exempt, name='dispatch')
@@ -167,12 +168,13 @@ class NewsArticleSerializer(serializers.ModelSerializer):
     published_at = serializers.DateTimeField(source='created_at', read_only=True)
     is_liked = serializers.SerializerMethodField()
     is_bookmarked = serializers.SerializerMethodField()
+    section = serializers.SerializerMethodField()
 
     class Meta:
         model = NewsArticle
         fields = [
             'id', 'title', 'summary', 'content', 'source', 'source_type',
-            'image_url', 'external_url', 'published_at', 'likes_count', 'views_count', 'category',
+            'image_url', 'external_url', 'published_at', 'likes_count', 'views_count', 'category', 'section',
             'is_liked', 'is_bookmarked',
         ]
 
@@ -223,6 +225,9 @@ class NewsArticleSerializer(serializers.ModelSerializer):
         except Exception:
             return False
 
+    def get_section(self, obj):
+        return classify_article_section(obj)
+
 
 @method_decorator(csrf_exempt, name='dispatch')
 class NewsViewSet(viewsets.ReadOnlyModelViewSet):
@@ -235,6 +240,7 @@ class NewsViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             queryset = NewsArticle.objects.all().order_by('-created_at')
             category = self.request.query_params.get('category')
+            section = self.request.query_params.get('section')
             source_type = self.request.query_params.get('source_type')
             search = self.request.query_params.get('search') or self.request.query_params.get('q')
             sort = self.request.query_params.get('sort') or '-created_at'
@@ -263,6 +269,10 @@ class NewsViewSet(viewsets.ReadOnlyModelViewSet):
 
             if category:
                 queryset = queryset.filter(category__icontains=category)
+
+            section_query = build_section_query(section)
+            if section_query is not None:
+                queryset = queryset.filter(section_query)
 
             if sort in {'created_at', '-created_at', 'likes_count', '-likes_count'}:
                 queryset = queryset.order_by(sort)

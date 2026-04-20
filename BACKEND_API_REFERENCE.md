@@ -364,6 +364,16 @@ Chronological feed of posts exclusively from accounts the authenticated user fol
 | `POST` | `/api/v1/news/{article_id}/like/` | Auth | Like article |
 | `POST` | `/api/v1/news/{article_id}/bookmark/` | Auth | Bookmark article |
 
+### News filtering
+
+`GET /api/v1/news/` supports `section=` with:
+
+- `news`
+- `sports`
+- `entertainment`
+
+News article payloads now include a server-owned `section` field so Explore, article detail, and any future clients can use the same categorization contract.
+
 ## Live Streams
 
 | Method | Path | Auth | Purpose |

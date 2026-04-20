@@ -110,6 +110,30 @@ def classify_article_section(article):
     return 'news'
 
 
+def build_section_query(section):
+    section = (section or '').strip().lower()
+    if section not in EXPLORE_SECTIONS:
+        return None
+    if section == 'sports':
+        query = Q(category__iregex=r'\b(sport|sports)\b')
+        for keyword in SPORTS_KEYWORDS:
+            query |= Q(title__icontains=keyword)
+            query |= Q(content__icontains=keyword)
+            query |= Q(category__icontains=keyword)
+        return query
+    if section == 'entertainment':
+        query = Q(category__iregex=r'\b(entertainment|music|movie|movies|film|tv)\b')
+        for keyword in ENTERTAINMENT_KEYWORDS:
+            query |= Q(title__icontains=keyword)
+            query |= Q(content__icontains=keyword)
+            query |= Q(category__icontains=keyword)
+        return query
+    # "news" means everything not strongly classified into the specialized sections.
+    sports_q = build_section_query('sports')
+    entertainment_q = build_section_query('entertainment')
+    return ~(sports_q | entertainment_q)
+
+
 def _serialize_article(article, request=None):
     is_liked = False
     is_bookmarked = False
@@ -136,6 +160,7 @@ def _serialize_article(article, request=None):
         'is_liked': is_liked,
         'is_bookmarked': is_bookmarked,
         'category': article.category,
+        'section': classify_article_section(article),
     }
 
 
@@ -219,9 +244,11 @@ def _build_clusters(request, limit=12, article_limit=80, section=None):
         section = 'news'
 
     topic_counter = _build_topic_counter()
-    articles = list(NewsArticle.objects.all().order_by('-created_at')[:article_limit])
-    if section:
-        articles = [article for article in articles if classify_article_section(article) == section]
+    queryset = NewsArticle.objects.all().order_by('-created_at')
+    section_query = build_section_query(section)
+    if section_query is not None:
+        queryset = queryset.filter(section_query)
+    articles = list(queryset[:article_limit])
 
     if not articles:
         return []
