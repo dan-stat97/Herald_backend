@@ -94,6 +94,12 @@ def build_auth_user_payload(profile):
     }
 
 
+def serialize_profile_with_metrics(profile, request=None):
+    profiled = attach_user_profile_metrics([profile], None)[0]
+    profiled.is_following_annotated = False
+    return UserProfileSerializer(profiled, context={'request': request} if request else {}).data
+
+
 def kingschat_request(url, method='GET', payload=None, headers=None):
     request_headers = {'Accept': 'application/json'}
     if headers:
@@ -585,7 +591,7 @@ class SessionView(views.APIView):
         profile = ensure_user_profile(request.user)
         return Response({
             'authenticated': True,
-            'user': UserProfileSerializer(profile).data,
+            'user': serialize_profile_with_metrics(profile, request),
         })
 
 
@@ -798,7 +804,7 @@ class CurrentUserView(views.APIView):
 
     def get(self, request):
         profile = ensure_user_profile(request.user)
-        return Response(UserProfileSerializer(profile).data)
+        return Response(serialize_profile_with_metrics(profile, request))
 
 
 class PasswordResetRequestView(views.APIView):

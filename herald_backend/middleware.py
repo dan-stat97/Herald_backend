@@ -1,4 +1,5 @@
 import time
+import uuid
 
 from django.urls import Resolver404, resolve
 
@@ -35,13 +36,20 @@ class ApiTimingMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        request_id = uuid.uuid4().hex[:10]
         start = time.perf_counter()
+        if request.path.startswith('/api/'):
+            print(
+                f"[API_REQUEST] id={request_id} method={request.method} path={request.path} "
+                f"query={request.META.get('QUERY_STRING', '') or '-'}"
+            )
         response = self.get_response(request)
         duration_ms = round((time.perf_counter() - start) * 1000, 2)
 
         if request.path.startswith('/api/'):
             try:
                 response['X-Response-Time-ms'] = str(duration_ms)
+                response['X-Request-ID'] = request_id
             except Exception:
                 pass
 
@@ -52,7 +60,7 @@ class ApiTimingMiddleware:
                 content_length = None
 
             print(
-                f"[API_TIMING] method={request.method} path={request.path} "
+                f"[API_TIMING] id={request_id} method={request.method} path={request.path} "
                 f"status={getattr(response, 'status_code', 'unknown')} "
                 f"duration_ms={duration_ms} content_length={content_length or '-'}"
             )
