@@ -1,14 +1,16 @@
 from django.core.cache import cache
+from django.db.models import Q
 from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from posts.cache_utils import get_post_timeline_cache_version
+from posts.models import Post
 from posts.ranking import build_twitter_feed
 from posts.serializers import PostSerializer
 from users.models import User as UserProfile
 
-from .news_clusters import _build_clusters, build_trending_topics
+from .news_clusters import _build_clusters, _topic_search_variants, build_trending_topics
 
 
 EXPLORE_TABS = {'for_you', 'trending', 'news', 'sports', 'entertainment'}
@@ -111,6 +113,60 @@ def _build_explore_for_you(request, limit=18):
     return payload
 
 
+def _build_explore_section_feed(request, section, limit=18):
+    cache_version = get_post_timeline_cache_version()
+    user_scope = f"user:{request.user.id}" if getattr(request.user, 'is_authenticated', False) else 'anon'
+    cache_key = f"explore:{section}:{user_scope}:l{limit}:v{cache_version}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    clusters = _build_clusters(request, limit=min(max(limit, 8), 12), article_limit=80, section=section)
+    topics = [
+        {
+            'id': cluster.get('id'),
+            'name': cluster.get('display_name'),
+            'topic': cluster.get('topic'),
+            'tag': cluster.get('tag'),
+            'posts_count': cluster.get('posts_count', 0),
+            'articles_count': cluster.get('articles_count', 0),
+        }
+        for cluster in clusters[:8]
+    ]
+
+    query = Q()
+    has_topic_filters = False
+    for cluster in clusters[:8]:
+        for variant in _topic_search_variants(cluster.get('topic')):
+            has_topic_filters = True
+            query |= Q(content__icontains=variant)
+
+    posts_qs = (
+        Post.objects.filter(query)
+        .select_related('author_id', 'author_id__user_id')
+        .order_by('-likes_count', '-comments_count', '-shares_count', '-created_at')
+    ) if has_topic_filters else Post.objects.none()
+
+    posts = list(posts_qs[: max(limit * 2, 24)])
+    serialized_posts = PostSerializer(
+        posts[:limit],
+        many=True,
+        context={
+            'request': request,
+            '_post_list': posts[:limit],
+            '_author_summary_only': True,
+        },
+    ).data
+
+    payload = {
+        'tab': section,
+        'topics': topics,
+        'posts': serialized_posts,
+    }
+    cache.set(cache_key, payload, 45)
+    return payload
+
+
 class ExploreTabView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -133,8 +189,4 @@ class ExploreTabView(APIView):
                 'topics': build_trending_topics(limit=limit),
             })
 
-        clusters = _build_clusters(request, limit=min(limit, 24), section=normalized)
-        return Response({
-            'tab': normalized,
-            'clusters': clusters,
-        })
+        return Response(_build_explore_section_feed(request, normalized, limit=limit))
