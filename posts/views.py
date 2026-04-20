@@ -145,8 +145,21 @@ class PostViewSet(viewsets.ModelViewSet):
 
 	def retrieve(self, request, *args, **kwargs):
 		instance = self.get_object()
-		Post.objects.filter(pk=instance.pk).update(views_count=F('views_count') + 1)
-		instance.views_count = (instance.views_count or 0) + 1
+
+		# ── View deduplication (24-hour per-user cooldown) ────────────────────
+		# Twitter counts every impression; we use a 24-hour cooldown so one user
+		# refreshing the same post repeatedly doesn't inflate view counts.
+		# Anonymous requests are skipped — they don't produce meaningful signals
+		# and unauthenticated bots/crawlers shouldn't count.
+		view_incremented = False
+		if request.user and request.user.is_authenticated:
+			view_key = f'post_view:{instance.pk}:{request.user.pk}'
+			if not cache.get(view_key):
+				Post.objects.filter(pk=instance.pk).update(views_count=F('views_count') + 1)
+				cache.set(view_key, 1, 86_400)  # 24-hour cooldown
+				instance.views_count = (instance.views_count or 0) + 1
+				view_incremented = True
+
 		serializer = self.get_serializer(
 			instance,
 			context={**self.get_serializer_context(), '_post_list': [instance], '_author_summary_only': True},
@@ -160,14 +173,15 @@ class PostViewSet(viewsets.ModelViewSet):
 		instance = serializer.instance
 		if instance is None:
 			return Response(serializer.data, status=status.HTTP_200_OK)
-		instance = Post.objects.select_related('author_id', 'author_id__user_id').get(pk=instance.pk)
-		response_serializer = PostSerializer(instance, context={**self.get_serializer_context(), '_post_list': [instance]})
+		response_serializer = PostSerializer(
+			instance,
+			context={**self.get_serializer_context(), '_post_list': [instance], '_author_summary_only': True},
+		)
 		headers = self.get_success_headers(response_serializer.data)
 		return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 	def perform_create(self, serializer):
 		try:
-			from django.db import transaction
 			profile = UserProfile.objects.get(user_id=self.request.user)
 			
 			# Check for duplicate posts (same content from same user in last 5 seconds)
@@ -176,32 +190,28 @@ class PostViewSet(viewsets.ModelViewSet):
 			recent_time = timezone.now() - timedelta(seconds=5)
 			content = serializer.validated_data.get('content', '')
 			
-			duplicate_exists = Post.objects.filter(
+			existing_post = Post.objects.filter(
 				author_id=profile,
 				content=content,
 				created_at__gte=recent_time
-			).exists()
-			
-			if duplicate_exists:
-				# Return existing post instead of creating duplicate
-				existing_post = Post.objects.filter(
-					author_id=profile,
-					content=content,
-					created_at__gte=recent_time
-				).first()
+			).select_related('author_id', 'author_id__user_id').first()
+
+			if existing_post:
+				# Return existing post instead of creating a duplicate.
 				serializer.instance = existing_post
 				return
-			
-			# Use atomic transaction to prevent race conditions
-			with transaction.atomic():
-				post = serializer.save(author_id=profile)
-				
-				# Award 25 HTTN Points for creating a post
-				from wallets.models import Wallet
-				wallet = Wallet.objects.select_for_update().get(user_id=profile)
-				wallet.httn_points += 25
-				wallet.save(update_fields=['httn_points', 'updated_at'])
-				bump_post_timeline_cache_version()
+
+			post = serializer.save(author_id=profile)
+
+			# Award 25 HTTN points with a lightweight atomic UPDATE instead of
+			# holding a row lock in the request path.
+			from wallets.models import Wallet
+			wallet, _ = Wallet.objects.get_or_create(user_id=profile)
+			Wallet.objects.filter(pk=wallet.pk).update(
+				httn_points=F('httn_points') + 25,
+			)
+			bump_post_timeline_cache_version()
+			serializer.instance = post
 			
 		except UserProfile.DoesNotExist:
 			from rest_framework.exceptions import ValidationError
@@ -245,8 +255,10 @@ class PostViewSet(viewsets.ModelViewSet):
 		if created:
 			Post.objects.filter(pk=post.pk).update(likes_count=F('likes_count') + 1)
 			bump_post_timeline_cache_version()
-		post.refresh_from_db(fields=['likes_count'])
-		return Response({'success': True, 'liked': True, 'likes_count': post.likes_count})
+		# Avoid a redundant SELECT — return the count we already know.
+		# If created, it's post.likes_count + 1; otherwise the count is unchanged.
+		new_count = post.likes_count + (1 if created else 0)
+		return Response({'success': True, 'liked': True, 'likes_count': new_count})
 
 	@action(detail=True, methods=['delete', 'post'])
 	def unlike(self, request, pk=None):
@@ -260,8 +272,8 @@ class PostViewSet(viewsets.ModelViewSet):
 		if deleted:
 			Post.objects.filter(pk=post.pk).update(likes_count=F('likes_count') - 1)
 			bump_post_timeline_cache_version()
-		post.refresh_from_db(fields=['likes_count'])
-		return Response({'success': True, 'liked': False, 'likes_count': post.likes_count})
+		new_count = max(0, post.likes_count - (1 if deleted else 0))
+		return Response({'success': True, 'liked': False, 'likes_count': new_count})
 
 	@action(detail=True, methods=['post'])
 	def share(self, request, pk=None):
@@ -276,8 +288,8 @@ class PostViewSet(viewsets.ModelViewSet):
 		if created:
 			Post.objects.filter(pk=post.pk).update(shares_count=F('shares_count') + 1)
 			bump_post_timeline_cache_version()
-		post.refresh_from_db(fields=['shares_count'])
-		return Response({'success': True, 'reposted': True, 'shares_count': post.shares_count})
+		new_count = post.shares_count + (1 if created else 0)
+		return Response({'success': True, 'reposted': True, 'shares_count': new_count})
 
 	@action(detail=True, methods=['delete', 'post'])
 	def unshare(self, request, pk=None):
@@ -291,8 +303,8 @@ class PostViewSet(viewsets.ModelViewSet):
 		if deleted:
 			Post.objects.filter(pk=post.pk).update(shares_count=F('shares_count') - 1)
 			bump_post_timeline_cache_version()
-		post.refresh_from_db(fields=['shares_count'])
-		return Response({'success': True, 'reposted': False, 'shares_count': post.shares_count})
+		new_count = max(0, post.shares_count - (1 if deleted else 0))
+		return Response({'success': True, 'reposted': False, 'shares_count': new_count})
 
 	@action(detail=True, methods=['post'])
 	def bookmark(self, request, pk=None):
@@ -306,8 +318,8 @@ class PostViewSet(viewsets.ModelViewSet):
 		if created:
 			Post.objects.filter(pk=post.pk).update(bookmarks_count=F('bookmarks_count') + 1)
 			bump_post_timeline_cache_version()
-		post.refresh_from_db(fields=['bookmarks_count'])
-		return Response({'success': True, 'bookmarked': True, 'bookmarks_count': post.bookmarks_count})
+		new_count = post.bookmarks_count + (1 if created else 0)
+		return Response({'success': True, 'bookmarked': True, 'bookmarks_count': new_count})
 
 	@action(detail=True, methods=['post', 'delete'])
 	def unbookmark(self, request, pk=None):
@@ -321,8 +333,8 @@ class PostViewSet(viewsets.ModelViewSet):
 		if deleted:
 			Post.objects.filter(pk=post.pk).update(bookmarks_count=F('bookmarks_count') - 1)
 			bump_post_timeline_cache_version()
-		post.refresh_from_db(fields=['bookmarks_count'])
-		return Response({'success': True, 'bookmarked': False, 'bookmarks_count': post.bookmarks_count})
+		new_count = max(0, post.bookmarks_count - (1 if deleted else 0))
+		return Response({'success': True, 'bookmarked': False, 'bookmarks_count': new_count})
 
 	@action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny], url_path='feed')
 	def feed(self, request):
