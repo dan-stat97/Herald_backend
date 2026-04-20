@@ -71,6 +71,29 @@ def create_wallet_if_missing(profile):
     Wallet.objects.get_or_create(user_id=profile, defaults={'httn_points': 100})
 
 
+def build_auth_user_payload(profile):
+    return {
+        'id': str(profile.id),
+        'user_id': profile.user_id_id,
+        'email': profile.user_id.email if getattr(profile, 'user_id', None) else profile.email,
+        'username': profile.username,
+        'display_name': profile.display_name,
+        'full_name': profile.full_name,
+        'avatar_url': profile.avatar_url,
+        'cover_url': profile.cover_url,
+        'bio': profile.bio,
+        'location': profile.location,
+        'website': profile.website,
+        'tier': profile.tier,
+        'reputation': profile.reputation,
+        'is_verified': profile.is_verified,
+        'is_creator': profile.is_creator,
+        'followers_count': 0,
+        'following_count': 0,
+        'posts_count': 0,
+    }
+
+
 def kingschat_request(url, method='GET', payload=None, headers=None):
     request_headers = {'Accept': 'application/json'}
     if headers:
@@ -374,7 +397,7 @@ class SignupView(generics.CreateAPIView):
         create_wallet_if_missing(profile)
         refresh = RefreshToken.for_user(user)
         return Response({
-            'user': UserProfileSerializer(profile).data,
+            'user': build_auth_user_payload(profile),
             'session': {
                 'access_token': str(refresh.access_token),
                 'token_type': 'Bearer',
@@ -391,7 +414,7 @@ class SigninView(views.APIView):
         email = request.data.get('email')
         password = request.data.get('password')
         try:
-            user = AuthUser.objects.get(email=email)
+            user = AuthUser.objects.only('id', 'username', 'email', 'password').get(email__iexact=email)
         except AuthUser.DoesNotExist:
             return Response({'error': 'User not found'}, status=404)
         user = authenticate(username=user.username, password=password)
@@ -400,7 +423,7 @@ class SigninView(views.APIView):
         refresh = RefreshToken.for_user(user)
         profile = ensure_user_profile(user)
         return Response({
-            'user': UserProfileSerializer(profile).data,
+            'user': build_auth_user_payload(profile),
             'session': {
                 'access_token': str(refresh.access_token),
                 'token_type': 'Bearer',
@@ -429,7 +452,7 @@ class KingsChatAuthView(views.APIView):
 
         refresh = RefreshToken.for_user(user)
         return Response({
-            'user': UserProfileSerializer(profile).data,
+            'user': build_auth_user_payload(profile),
             'session': {
                 'access_token': str(refresh.access_token),
                 'token_type': 'Bearer',
