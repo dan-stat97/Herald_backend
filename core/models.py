@@ -427,6 +427,7 @@ class NewsArticle(models.Model):
     source_type = models.CharField(max_length=50, default='herald')
     content = models.TextField()
     category = models.CharField(max_length=50)
+    section = models.CharField(max_length=20, default='news', db_index=True)
     source_url = models.URLField(null=True, blank=True)
     image_url = models.URLField(null=True, blank=True)
     likes_count = models.IntegerField(default=0)

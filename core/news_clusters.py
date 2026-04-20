@@ -84,6 +84,10 @@ def _includes_keyword(text, keywords):
 
 
 def classify_article_section(article):
+    existing = _clean_token(getattr(article, 'section', '') or '')
+    if existing in EXPLORE_SECTIONS:
+        return existing
+
     explicit = _clean_token(getattr(article, 'category', '') or '')
     if explicit in {'sport', 'sports'}:
         return 'sports'
@@ -114,24 +118,7 @@ def build_section_query(section):
     section = (section or '').strip().lower()
     if section not in EXPLORE_SECTIONS:
         return None
-    if section == 'sports':
-        query = Q(category__iregex=r'\b(sport|sports)\b')
-        for keyword in SPORTS_KEYWORDS:
-            query |= Q(title__icontains=keyword)
-            query |= Q(content__icontains=keyword)
-            query |= Q(category__icontains=keyword)
-        return query
-    if section == 'entertainment':
-        query = Q(category__iregex=r'\b(entertainment|music|movie|movies|film|tv)\b')
-        for keyword in ENTERTAINMENT_KEYWORDS:
-            query |= Q(title__icontains=keyword)
-            query |= Q(content__icontains=keyword)
-            query |= Q(category__icontains=keyword)
-        return query
-    # "news" means everything not strongly classified into the specialized sections.
-    sports_q = build_section_query('sports')
-    entertainment_q = build_section_query('entertainment')
-    return ~(sports_q | entertainment_q)
+    return Q(section=section)
 
 
 def _serialize_article(article, request=None):

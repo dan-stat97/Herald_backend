@@ -372,7 +372,7 @@ Chronological feed of posts exclusively from accounts the authenticated user fol
 - `sports`
 - `entertainment`
 
-News article payloads now include a server-owned `section` field so Explore, article detail, and any future clients can use the same categorization contract.
+News article payloads now include a stored server-owned `section` field so Explore, article detail, and any future clients can use the same categorization contract.
 
 ## Live Streams
 
