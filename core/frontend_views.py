@@ -2,6 +2,7 @@ import re
 from collections import Counter
 from pathlib import Path
 
+from django.core.cache import cache
 from django.db import connection
 from django.db.models import Q
 from django.views.generic import TemplateView
@@ -12,9 +13,12 @@ from rest_framework.views import APIView
 from posts.models import Post
 from posts.serializers import PostSerializer
 from core.pagination import StandardPagination
+from users.models import User as UserProfile
+from users.query_utils import attach_user_profile_metrics, optimize_user_profile_queryset
 
 
 SEARCH_TOKEN_SPLIT_RE = re.compile(r"[\s_-]+")
+SEARCH_CACHE_TTL_SECONDS = 20
 
 
 def _normalized_search_variants(query: str) -> tuple[str, set[str], list[str]]:
@@ -64,6 +68,108 @@ def _build_post_search_queryset(query: str):
         .select_related("author_id", "author_id__user_id")
         .order_by("-likes_count", "-comments_count", "-created_at")
     )
+
+
+def _build_user_search_queryset(query: str):
+    normalized, variants, tokens = _normalized_search_variants(query)
+    if not normalized:
+        return UserProfile.objects.none()
+
+    clause = Q()
+    for variant in variants:
+        clause |= (
+            Q(username__icontains=variant)
+            | Q(display_name__icontains=variant)
+            | Q(full_name__icontains=variant)
+            | Q(bio__icontains=variant)
+        )
+
+    if tokens:
+        token_clause = Q()
+        for token in tokens:
+            token_clause |= (
+                Q(username__icontains=token)
+                | Q(display_name__icontains=token)
+                | Q(full_name__icontains=token)
+                | Q(bio__icontains=token)
+            )
+        clause |= token_clause
+
+    return optimize_user_profile_queryset(
+        UserProfile.objects.filter(clause).order_by("-reputation", "-created_at")
+    )
+
+
+def _search_text_score(value: str | None, normalized: str, tokens: list[str]) -> int:
+    text = (value or "").strip().lower()
+    if not text:
+        return 0
+    score = 0
+    if text == normalized:
+        score += 120
+    elif text.startswith(normalized):
+        score += 90
+    elif normalized in text:
+        score += 60
+
+    for token in tokens:
+        if token == normalized:
+            continue
+        if token in text:
+            score += 12
+    return score
+
+
+def _sort_user_search_results(users, query: str):
+    normalized, _, tokens = _normalized_search_variants(query)
+    if not normalized:
+        return list(users)
+
+    def score(profile: UserProfile):
+        return (
+            _search_text_score(profile.username, normalized, tokens) * 4
+            + _search_text_score(profile.display_name, normalized, tokens) * 3
+            + _search_text_score(profile.full_name, normalized, tokens) * 2
+            + _search_text_score(profile.bio, normalized, tokens)
+            + int(getattr(profile, "reputation", 0) or 0)
+        )
+
+    return sorted(
+        users,
+        key=lambda profile: (
+            score(profile),
+            int(getattr(profile, "reputation", 0) or 0),
+            getattr(profile, "created_at", None) or 0,
+        ),
+        reverse=True,
+    )
+
+
+def _serialize_search_users(users, request):
+    profiles = attach_user_profile_metrics(users, getattr(request, "user", None))
+    payload = []
+    for profile in profiles:
+        payload.append(
+            {
+                "id": str(profile.id),
+                "user_id": profile.user_id_id,
+                "username": profile.username,
+                "display_name": profile.display_name,
+                "full_name": profile.full_name,
+                "avatar_url": profile.avatar_url,
+                "bio": profile.bio,
+                "followers_count": int(getattr(profile, "followers_count_annotated", 0) or 0),
+                "following_count": int(getattr(profile, "following_count_annotated", 0) or 0),
+                "posts_count": int(getattr(profile, "posts_count_annotated", 0) or 0),
+                "is_following": bool(getattr(profile, "is_following_annotated", False)),
+                "tier": profile.tier,
+                "reputation": profile.reputation,
+                "is_verified": profile.is_verified,
+                "is_creator": profile.is_creator,
+                "created_at": profile.created_at,
+            }
+        )
+    return payload
 
 
 class ApiHealthView(APIView):
@@ -131,7 +237,11 @@ class SearchPostsView(APIView):
         queryset = _build_post_search_queryset(query)
         paginator = StandardPagination()
         page = paginator.paginate_queryset(queryset, request)
-        serializer = PostSerializer(page, many=True)
+        serializer = PostSerializer(
+            page,
+            many=True,
+            context={"request": request, "_post_list": list(page), "_author_summary_only": True},
+        )
         return paginator.get_paginated_response(serializer.data)
 
 
@@ -140,44 +250,34 @@ class UnifiedSearchView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        from users.models import User as UserProfile
-        from users.serializers import UserProfileSerializer
-        from posts.serializers import PostSerializer
-        from django.db.models import Q as DQ
-        from core.models import Follow
-
         query = (request.query_params.get('q') or
                  request.query_params.get('query') or '').strip()
         if not query:
             return Response({'users': [], 'posts': []})
 
         limit = min(int(request.query_params.get('limit', 10)), 50)
+        normalized, _, _ = _normalized_search_variants(query)
+        viewer_scope = f"user:{request.user.id}" if request.user.is_authenticated else "anon"
+        cache_key = f"unified-search:{viewer_scope}:{normalized}:{limit}"
+        cached_payload = cache.get(cache_key)
+        if cached_payload is not None:
+            return Response(cached_payload)
 
-        # --- Users ---
-        users_qs = UserProfile.objects.filter(
-            DQ(username__icontains=query) | DQ(display_name__icontains=query)
-        ).order_by('-reputation', 'username')[:limit]
-        users_data = UserProfileSerializer(users_qs, many=True).data
+        users_candidates = list(_build_user_search_queryset(query)[:limit * 4])
+        users_ranked = _sort_user_search_results(users_candidates, query)[:limit]
+        users_data = _serialize_search_users(users_ranked, request)
 
-        # Annotate is_following
-        if request.user.is_authenticated:
-            try:
-                me = UserProfile.objects.get(user_id=request.user)
-                following_ids = set(
-                    Follow.objects.filter(follower_id=me.id).values_list('following_id', flat=True)
-                )
-                users_data = [dict(u, is_following=str(u['id']) in {str(i) for i in following_ids})
-                              for u in users_data]
-            except UserProfile.DoesNotExist:
-                users_data = [dict(u, is_following=False) for u in users_data]
-        else:
-            users_data = [dict(u, is_following=False) for u in users_data]
+        posts_qs = _build_post_search_queryset(query)[: limit * 2]
+        posts_list = list(posts_qs)
+        posts_data = PostSerializer(
+            posts_list,
+            many=True,
+            context={"request": request, "_post_list": posts_list, "_author_summary_only": True},
+        ).data
 
-        # --- Posts (normalized content / hashtag search) ---
-        posts_qs = _build_post_search_queryset(query)[:limit * 2]
-        posts_data = PostSerializer(posts_qs, many=True).data
-
-        return Response({'users': users_data, 'posts': posts_data})
+        payload = {'users': users_data, 'posts': posts_data}
+        cache.set(cache_key, payload, SEARCH_CACHE_TTL_SECONDS)
+        return Response(payload)
 
 
 class ApiDocsView(TemplateView):

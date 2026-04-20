@@ -36,6 +36,33 @@ class ExploreSearchTests(TestCase):
         payload = response.json()
         self.assertTrue(any(item['id'] == str(post.id) for item in payload['posts']))
 
+    def test_unified_search_matches_plain_keyword_in_posts_and_users(self):
+        streaming_user = User.objects.create(
+            user_id=get_user_model().objects.create_user(
+                username='streaminghost',
+                email='streaminghost@example.com',
+                password='password123',
+            ),
+            username='streaminghost',
+            display_name='Streaming Host',
+            bio='Daily streaming updates and creator tips',
+            email='streaminghost@example.com',
+            onboarding_completed=True,
+        )
+        post = Post.objects.create(
+            author_id=self.profile,
+            content='Streaming tonight from Lagos with behind-the-scenes creator tips.',
+            likes_count=12,
+            comments_count=2,
+        )
+
+        response = self.client.get('/api/v1/search/', {'q': 'streaming'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(any(item['id'] == str(post.id) for item in payload['posts']))
+        self.assertTrue(any(item['id'] == str(streaming_user.id) for item in payload['users']))
+
     def test_explore_section_clusters_show_real_post_counts_for_story_topics(self):
         NewsArticle.objects.create(
             title='Super Eagles Qualify with Dominant Display in Abuja',
