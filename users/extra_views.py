@@ -12,6 +12,7 @@ from core.models import Follow
 from core.pagination import StandardPagination
 from posts.models import Post
 from tasks.models import UserTask
+from tasks.rewards import claim_user_task_reward
 from users.models import User as UserProfile
 from users.query_utils import attach_user_profile_metrics, optimize_user_profile_queryset
 from users.serializers import UserProfileSerializer
@@ -285,34 +286,11 @@ class UserTaskClaimMeView(APIView):
     def post(self, request, task_id):
         try:
             profile = UserProfile.objects.get(user_id=request.user)
-            user_task = UserTask.objects.select_related("task").get(id=task_id, user=profile)
-            wallet = Wallet.objects.get(user_id=profile)
         except UserProfile.DoesNotExist:
             return Response({"error": "User profile not found"}, status=status.HTTP_404_NOT_FOUND)
-        except UserTask.DoesNotExist:
-            return Response({"error": "Task not found"}, status=status.HTTP_404_NOT_FOUND)
-        except Wallet.DoesNotExist:
-            return Response({"error": "Wallet not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if not user_task.completed:
-            return Response({"error": "Task not completed yet"}, status=status.HTTP_400_BAD_REQUEST)
-
-        if user_task.claimed:
-            return Response({"error": "Reward already claimed"}, status=status.HTTP_400_BAD_REQUEST)
-
-        with db_transaction.atomic():
-            wallet.httn_points += user_task.task.reward
-            wallet.save(update_fields=["httn_points", "updated_at"])
-            user_task.claimed = True
-            user_task.save(update_fields=["claimed"])
-
-        return Response(
-            {
-                "success": True,
-                "reward": user_task.task.reward,
-                "new_balance": wallet.httn_points,
-            }
-        )
+        _, payload, status_code = claim_user_task_reward(profile, task_id)
+        return Response(payload, status=status_code)
 
 
 class UserInterestsView(APIView):

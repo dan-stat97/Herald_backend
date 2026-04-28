@@ -12,6 +12,7 @@ from users.views import ensure_user_profile
 from .cache_utils import bump_post_timeline_cache_version
 from .models import Comment, CommentBookmark, CommentLike, CommentRepost, Post
 from .serializers import CommentSerializer
+from tasks.rewards import award_comment_creation, award_post_engagement_milestones
 
 
 def _comment_cache_version(post_id):
@@ -119,9 +120,12 @@ class CommentViewSet(viewsets.ModelViewSet):
             parent_comment = get_object_or_404(Comment, id=parent_comment_id, post=post)
 
         serializer.save(post=post, author=user, parent_comment=parent_comment)
+        comment = serializer.instance
         Post.objects.filter(pk=post.pk).update(comments_count=F('comments_count') + 1)
         if parent_comment:
             Comment.objects.filter(pk=parent_comment.pk).update(replies_count=F('replies_count') + 1)
+        award_comment_creation(user, comment)
+        award_post_engagement_milestones(post, 'comments_count', post.comments_count + 1)
         _bump_comment_cache_version(post.id)
         bump_post_timeline_cache_version()
 

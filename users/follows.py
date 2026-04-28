@@ -9,6 +9,7 @@ from core.models import Follow, Profiles
 from users.models import User as UserProfile
 from users.legacy_profiles import ensure_legacy_profile, get_legacy_profile_for_user_profile
 from users.views import ensure_user_profile
+from tasks.rewards import record_follow_action
 
 
 def _get_target_profile(identifier):
@@ -51,6 +52,7 @@ class FollowViewSet(viewsets.ViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
         Follow.objects.create(follower_id=follower_legacy.id, following_id=following_legacy.id)
+        record_follow_action(follower, following)
         return Response({'success': True, 'is_following': True, **_follow_payload(following)})
 
     @action(detail=True, methods=['delete'])

@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
 from .models import Task, UserTask
+from .rewards import claim_user_task_reward, ensure_default_tasks
 
 
 class TaskViewSet(viewsets.ModelViewSet):
@@ -13,6 +14,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         from users.models import User as UserProfile
         try:
             profile = UserProfile.objects.get(user_id=self.request.user)
+            ensure_default_tasks(profile)
             return UserTask.objects.filter(user=profile).select_related('task')
         except UserProfile.DoesNotExist:
             return UserTask.objects.none()
@@ -45,45 +47,12 @@ class TaskViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def claim(self, request, pk=None):
         """Claim task reward"""
+        from users.models import User as UserProfile
+
         try:
-            user_task = self.get_object()
-            
-            if not user_task.completed:
-                return Response(
-                    {'error': 'Task not completed yet'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            if user_task.claimed:
-                return Response(
-                    {'error': 'Reward already claimed'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Award reward
-            from wallets.models import Wallet
-            from users.models import User as UserProfile
-            
             profile = UserProfile.objects.get(user_id=request.user)
-            wallet = Wallet.objects.get(user_id=profile)
-            
-            wallet.httn_points += user_task.task.reward
-            wallet.save()
-            
-            user_task.claimed = True
-            user_task.save()
-            
-            return Response({
-                'success': True,
-                'message': f'Claimed {user_task.task.reward} HTTN Points',
-                'reward': user_task.task.reward,
-                'new_balance': wallet.httn_points
-            }, status=status.HTTP_200_OK)
-            
-        except UserTask.DoesNotExist:
-            return Response({'error': 'Task not found'}, status=404)
-        except Exception as e:
-            return Response(
-                {'error': f'Failed to claim reward: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        except UserProfile.DoesNotExist:
+            return Response({'error': 'User profile not found'}, status=404)
+
+        _, payload, status_code = claim_user_task_reward(profile, pk)
+        return Response(payload, status=status_code)

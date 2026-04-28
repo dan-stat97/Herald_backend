@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from users.models import User as UserProfile
 from users.serializers import UserProfileSerializer
 from wallets.models import Wallet
+from .leaderboard_cache import get_leaderboard_cache_version
 
 
 class LeaderboardViewSet(viewsets.GenericViewSet):
@@ -29,7 +30,8 @@ class LeaderboardViewSet(viewsets.GenericViewSet):
         return data
 
     def _cache_response(self, metric, limit, builder):
-        cache_key = f'leaderboard:{metric}:limit:{limit}'
+        version = get_leaderboard_cache_version()
+        cache_key = f'leaderboard:{metric}:limit:{limit}:v{version}'
         cached = cache.get(cache_key)
         if cached is not None:
             return Response(cached)

@@ -22,6 +22,8 @@ from .query_utils import attach_user_profile_metrics, optimize_user_profile_quer
 from .serializers import UserProfileSerializer, UserReplySerializer, UserSignupSerializer
 from posts.cache_utils import get_post_timeline_cache_version
 from posts.models import Comment, Post, PostLike, PostRepost
+from tasks.models import UserTask
+from tasks.rewards import claim_user_task_reward, ensure_default_tasks, grant_points
 
 AuthUser = get_user_model()
 KINGSCHAT_TOKEN_URL = 'https://connect.kingsch.at/developer/oauth2/token'
@@ -68,7 +70,16 @@ def ensure_user_profile(auth_user):
 
 def create_wallet_if_missing(profile):
     from wallets.models import Wallet
-    Wallet.objects.get_or_create(user_id=profile, defaults={'httn_points': 100})
+
+    wallet, created = Wallet.objects.get_or_create(user_id=profile)
+    if created:
+        grant_points(
+            profile,
+            action_code='welcome_bonus',
+            source_key='welcome',
+            points=100,
+            description='Welcome bonus',
+        )
 
 
 def build_auth_user_payload(profile):
@@ -789,14 +800,42 @@ class UserTasksView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk=None):
-        return Response([])
+        profile = ensure_user_profile(request.user)
+        if pk and str(profile.id) != str(pk):
+            return Response({'error': 'You can only view your own tasks'}, status=403)
+
+        ensure_default_tasks(profile)
+        user_tasks = UserTask.objects.select_related('task').filter(user=profile).order_by('task__created_at')
+        data = [
+            {
+                'id': str(item.id),
+                'code': item.task.code,
+                'title': item.task.title,
+                'description': item.task.description,
+                'task_type': item.task.task_type,
+                'reward': item.task.reward,
+                'target': item.task.target,
+                'progress': item.progress,
+                'progress_percent': min(round((item.progress / item.task.target) * 100, 2), 100) if item.task.target else 0,
+                'completed': item.completed,
+                'claimed': item.claimed,
+                'completed_at': item.completed_at,
+                'created_at': item.created_at,
+            }
+            for item in user_tasks
+        ]
+        return Response(data)
 
 
 class ClaimTaskRewardView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk, task_id):
-        return Response({'success': True, 'reward': 0})
+        profile = ensure_user_profile(request.user)
+        if str(profile.id) != str(pk):
+            return Response({'error': 'You can only claim your own task rewards'}, status=403)
+        _, payload, status_code = claim_user_task_reward(profile, task_id)
+        return Response(payload, status=status_code)
 
 
 class CurrentUserView(views.APIView):

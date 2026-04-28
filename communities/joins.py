@@ -3,6 +3,7 @@ from rest_framework import permissions, status, views
 from rest_framework.response import Response
 
 from .models import Community, CommunityMember, CommunityJoinRequest
+from tasks.rewards import record_community_join
 from users.models import User as UserProfile
 from .notify import notify_join_request_received
 
@@ -87,6 +88,7 @@ class CommunityJoinView(views.APIView):
         CommunityMember.objects.get_or_create(community=community, user=user_profile)
         community.member_count = community.members.count()
         community.save(update_fields=['member_count'])
+        record_community_join(user_profile, community)
 
         return Response({
             'success': True,

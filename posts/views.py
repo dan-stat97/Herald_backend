@@ -13,6 +13,7 @@ from .models import Post, PostLike, PostRepost, PostBookmark
 from .serializers import PostSerializer, PostCreateSerializer
 from .ranking import rank_feed_posts
 from .feed_view import PostFeedView as _PostFeedView
+from tasks.rewards import award_post_creation, award_post_engagement_milestones
 from users.models import User as UserProfile
 from users.views import ensure_user_profile
 from core.pagination import StandardPagination
@@ -202,14 +203,7 @@ class PostViewSet(viewsets.ModelViewSet):
 				return
 
 			post = serializer.save(author_id=profile)
-
-			# Award 25 HTTN points with a lightweight atomic UPDATE instead of
-			# holding a row lock in the request path.
-			from wallets.models import Wallet
-			wallet, _ = Wallet.objects.get_or_create(user_id=profile)
-			Wallet.objects.filter(pk=wallet.pk).update(
-				httn_points=F('httn_points') + 25,
-			)
+			award_post_creation(profile, post)
 			bump_post_timeline_cache_version()
 			serializer.instance = post
 			
@@ -255,6 +249,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		if created:
 			Post.objects.filter(pk=post.pk).update(likes_count=F('likes_count') + 1)
 			bump_post_timeline_cache_version()
+			award_post_engagement_milestones(post, 'likes_count', post.likes_count + 1)
 		# Avoid a redundant SELECT — return the count we already know.
 		# If created, it's post.likes_count + 1; otherwise the count is unchanged.
 		new_count = post.likes_count + (1 if created else 0)
@@ -288,6 +283,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		if created:
 			Post.objects.filter(pk=post.pk).update(shares_count=F('shares_count') + 1)
 			bump_post_timeline_cache_version()
+			award_post_engagement_milestones(post, 'shares_count', post.shares_count + 1)
 		new_count = post.shares_count + (1 if created else 0)
 		return Response({'success': True, 'reposted': True, 'shares_count': new_count})
 

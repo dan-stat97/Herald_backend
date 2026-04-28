@@ -14,6 +14,7 @@ from .notify import (
     notify_post_liked, notify_post_commented,
     notify_invite_sent, notify_invite_responded,
 )
+from tasks.rewards import record_community_join
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -613,6 +614,7 @@ class CommunityJoinRequestDetailView(views.APIView):
             CommunityMember.objects.get_or_create(community=community, user=jr.user)
             community.member_count = community.members.count()
             community.save(update_fields=['member_count'])
+            record_community_join(jr.user, community)
 
         notify_join_request_reviewed(jr)
         return Response(_serialize_join_request(jr))
