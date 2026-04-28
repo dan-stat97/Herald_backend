@@ -16,6 +16,7 @@ from .ivs_service import (
 )
 from .ranking import rank_streams_for_discovery
 from core.pagination import StandardPagination
+from users.models import User as UserProfile
 
 
 class LiveStreamSerializer(serializers.ModelSerializer):
@@ -138,6 +139,12 @@ class LiveStreamViewSet(viewsets.ModelViewSet):
         if self.action in ('list', 'retrieve'):
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
+
+    def _request_profile(self, request):
+        try:
+            return UserProfile.objects.only('id', 'user_id').get(user_id=request.user)
+        except UserProfile.DoesNotExist:
+            return None
     
     def get_queryset(self):
         status_filter = self.request.query_params.get('status')
@@ -249,7 +256,8 @@ class LiveStreamViewSet(viewsets.ModelViewSet):
     def update_stats(self, request, pk=None):
         """Update stream viewer count and status"""
         stream = self.get_object()
-        if str(stream.user.user_id) != str(request.user.id):
+        profile = self._request_profile(request)
+        if not profile or str(stream.user_id) != str(profile.id):
             return Response({'detail': 'Only the stream owner can update this stream.'}, status=status.HTTP_403_FORBIDDEN)
         
         viewer_count = request.data.get('viewer_count')
@@ -277,7 +285,8 @@ class LiveStreamViewSet(viewsets.ModelViewSet):
     def end(self, request, pk=None):
         """Owner-controlled hard end for a stream outside the native studio flow."""
         stream = self.get_object()
-        if str(stream.user.user_id) != str(request.user.id):
+        profile = self._request_profile(request)
+        if not profile or str(stream.user_id) != str(profile.id):
             return Response({'detail': 'Only the stream owner can end this stream.'}, status=status.HTTP_403_FORBIDDEN)
 
         if stream.status == 'ended':
@@ -297,7 +306,8 @@ class LiveStreamViewSet(viewsets.ModelViewSet):
     def host_session(self, request, pk=None):
         stream = self.get_object()
 
-        if str(stream.user.user_id) != str(request.user.id):
+        profile = self._request_profile(request)
+        if not profile or str(stream.user_id) != str(profile.id):
             return Response({'detail': 'Only the stream owner can open a host session.'}, status=status.HTTP_403_FORBIDDEN)
 
         if stream.provider != 'ivs' or not stream.ivs_stage_arn:
