@@ -23,6 +23,14 @@ class Migration(migrations.Migration):
                 created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
+            ALTER TABLE IF EXISTS tasks
+                ADD COLUMN IF NOT EXISTS title varchar(200),
+                ADD COLUMN IF NOT EXISTS description text,
+                ADD COLUMN IF NOT EXISTS task_type varchar(20),
+                ADD COLUMN IF NOT EXISTS reward integer,
+                ADD COLUMN IF NOT EXISTS target integer,
+                ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP;
+
             CREATE TABLE IF NOT EXISTS user_tasks (
                 id uuid PRIMARY KEY,
                 progress integer NOT NULL DEFAULT 0,
@@ -33,6 +41,15 @@ class Migration(migrations.Migration):
                 task_id uuid NOT NULL REFERENCES tasks(id) DEFERRABLE INITIALLY DEFERRED,
                 user_id uuid NOT NULL REFERENCES users_user(id) DEFERRABLE INITIALLY DEFERRED
             );
+
+            ALTER TABLE IF EXISTS user_tasks
+                ADD COLUMN IF NOT EXISTS progress integer DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS completed boolean DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS claimed boolean DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS completed_at timestamp with time zone NULL,
+                ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS task_id uuid,
+                ADD COLUMN IF NOT EXISTS user_id uuid;
 
             CREATE UNIQUE INDEX IF NOT EXISTS user_tasks_user_id_task_id_uniq
                 ON user_tasks(user_id, task_id);
