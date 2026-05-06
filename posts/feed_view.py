@@ -21,6 +21,7 @@ from .cache_utils import get_post_timeline_cache_version
 from .models import Post
 from .ranking import build_twitter_feed
 from .serializers import PostSerializer
+from users.privacy import filter_visible_posts
 
 
 class PostFeedView(APIView):
@@ -64,7 +65,10 @@ class PostFeedView(APIView):
         if page_ids:
             page_map = {
                 post.id: post
-                for post in Post.objects.select_related('author_id', 'author_id__user_id').filter(id__in=page_ids)
+                for post in filter_visible_posts(
+                    Post.objects.select_related('author_id', 'author_id__user_id').filter(id__in=page_ids),
+                    request,
+                )
             }
             page_posts = [page_map[post_id] for post_id in page_ids if post_id in page_map]
         else:

@@ -11,8 +11,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.pagination import StandardPagination
+from core.models import Follow
 from livestreams.models import LiveStream, StreamChatMessage, StreamDonation, StreamViewerEvent
 from posts.models import ScheduledPost
+from users.legacy_profiles import get_legacy_profile_for_user_profile
 from users.models import DirectMessage, User as UserProfile
 from wallets.models import Transaction, Wallet
 
@@ -72,13 +74,19 @@ class ConversationDetailView(APIView):
 
         paginator = StandardPagination()
         page = paginator.paginate_queryset(queryset, request)
+        viewer_allows_receipts = profile.show_read_receipts
         data = [
             {
                 "id": str(item.id),
                 "sender_id": str(item.sender_id),
                 "recipient_id": str(item.recipient_id),
                 "content": item.content,
-                "read": item.read,
+                "read": (
+                    item.read
+                    if item.recipient_id == profile.id
+                    else bool(item.read and viewer_allows_receipts and item.recipient.show_read_receipts)
+                ),
+                "read_at": item.read_at,
                 "created_at": item.created_at,
             }
             for item in page
@@ -100,6 +108,31 @@ class MessageCreateView(APIView):
         recipient = get_object_or_404(UserProfile, id=recipient_id)
         if sender.id == recipient.id:
             return Response({"error": "Cannot message yourself"}, status=status.HTTP_400_BAD_REQUEST)
+
+        prior_conversation_exists = DirectMessage.objects.filter(
+            (Q(sender=sender) & Q(recipient=recipient)) | (Q(sender=recipient) & Q(recipient=sender))
+        ).exists()
+
+        recipient_follows_sender = False
+        sender_legacy = get_legacy_profile_for_user_profile(sender)
+        recipient_legacy = get_legacy_profile_for_user_profile(recipient)
+        if sender_legacy and recipient_legacy:
+            recipient_follows_sender = Follow.objects.filter(
+                follower_id=recipient_legacy.id,
+                following_id=sender_legacy.id,
+            ).exists()
+
+        if (
+            not recipient.allow_message_requests
+            and not prior_conversation_exists
+            and not recipient_follows_sender
+        ):
+            return Response(
+                {
+                    "error": "This user only accepts message requests from accounts they follow.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         msg = DirectMessage.objects.create(sender=sender, recipient=recipient, content=content)
         return Response(
@@ -123,7 +156,8 @@ class MessageReadView(APIView):
         msg = get_object_or_404(DirectMessage, id=message_id, recipient=profile)
         if not msg.read:
             msg.read = True
-            msg.save(update_fields=["read"])
+            msg.read_at = timezone.now()
+            msg.save(update_fields=["read", "read_at"])
         return Response({"success": True, "id": str(msg.id), "read": msg.read})
 
 

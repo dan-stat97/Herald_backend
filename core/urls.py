@@ -68,7 +68,7 @@ from livestreams.views import LiveStreamViewSet
 from estore.views import ProductViewSet, OrderViewSet
 from estore.cart import CartView, CartItemView
 from estore.store_views import StoreProductsView, StoreCheckoutView, StoreOrdersMeView
-from adminpanel.views import AdminStatsView, AdminUsersView, AdminPostsView, AdminBanUserView
+from adminpanel.views import AdminStatsView, AdminAnalyticsView, AdminUsersView, AdminPostsView, AdminBanUserView
 from adminpanel.reports import AdminReportView, AdminReportDetailView
 from adminpanel.extra_views import (
     AdminRoleView, AdminVerifyUserView,
@@ -224,6 +224,7 @@ urlpatterns = [
     path('v1/admin/me/role/', AdminRoleView.as_view(), name='admin-role'),
     path('v1/admin/stats/', AdminStatsView.as_view(), name='admin-stats'),
     path('v1/admin/dashboard/stats/', AdminStatsView.as_view(), name='admin-dashboard-stats'),
+    path('v1/admin/analytics/', AdminAnalyticsView.as_view(), name='admin-analytics'),
     path('v1/admin/users/', AdminUsersView.as_view(), name='admin-users'),
     path('v1/admin/users/<uuid:user_id>/verify/', AdminVerifyUserView.as_view(), name='admin-verify-user'),
     path('v1/admin/posts/', AdminPostsView.as_view(), name='admin-posts'),

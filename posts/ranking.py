@@ -62,6 +62,7 @@ from users.legacy_profiles import ensure_legacy_profile
 from users.models import User as UserProfile
 
 from .models import Post, PostBookmark, PostLike, PostRepost
+from users.privacy import filter_visible_posts
 
 
 # ── Engagement weights (Twitter HomeGlobalParams calibration) ─────────────────
@@ -492,7 +493,20 @@ def build_twitter_feed(request) -> list[Post]:
         second_degree_author_counts=sec_deg,
     )
 
-    base_qs = Post.objects.select_related('author_id', 'author_id__user_id').all()
+    base_qs = filter_visible_posts(
+        Post.objects.select_related('author_id', 'author_id__user_id').all(),
+        request,
+    )
+
+    if profile and not getattr(profile, 'personalization_enabled', True):
+        candidates = list(
+            base_qs.order_by('-likes_count', '-comments_count', '-shares_count', '-created_at')[:ANON_POOL]
+        )
+        scored = sorted(
+            [(_base_post_score(p, **score_kwargs), p) for p in candidates],
+            key=lambda x: (x[0], x[1].created_at), reverse=True,
+        )
+        return _diversity_pass(scored)
 
     if followed_ids:
         # ── Pool A: in-network ────────────────────────────────────────────────

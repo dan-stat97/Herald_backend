@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import User as UserProfile
@@ -24,9 +26,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = [
-            'id', 'user_id', 'username', 'display_name', 'full_name', 'email', 'avatar_url', 'cover_url', 'bio', 'location', 'website',
+            'id', 'user_id', 'username', 'display_name', 'full_name', 'email', 'avatar_url', 'cover_url', 'bio', 'location', 'website', 'phone_number',
             'followers_count', 'following_count', 'posts_count', 'is_following',
-            'notifications_enabled', 'privacy_level', 'email_updates', 'interests', 'onboarding_completed',
+            'notifications_enabled', 'push_notifications', 'privacy_level', 'email_updates',
+            'discover_by_email', 'discover_by_phone', 'allow_message_requests', 'show_read_receipts',
+            'display_sensitive_media', 'mark_media_sensitive', 'personalization_enabled',
+            'interests', 'onboarding_completed',
             'tier', 'reputation', 'is_verified', 'is_creator', 'auth_provider',
             'created_at', 'updated_at'
         ]
@@ -43,6 +48,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if '://' not in value:
             value = f'https://{value}'
         return value
+
+    def validate_phone_number(self, value):
+        value = (value or '').strip()
+        if not value:
+            return None
+        normalized = re.sub(r'(?!^\+)[^0-9]', '', value)
+        return normalized or None
 
     def get_email(self, obj):
         try:

@@ -17,13 +17,22 @@ class User(models.Model):
     bio = models.TextField(null=True, blank=True)
     location = models.CharField(max_length=255, null=True, blank=True)
     website = models.URLField(null=True, blank=True)
+    phone_number = models.CharField(max_length=32, null=True, blank=True)
     notifications_enabled = models.BooleanField(default=True)
+    push_notifications = models.BooleanField(default=True)
     privacy_level = models.CharField(
         max_length=20,
-        choices=[('public', 'Public'), ('private', 'Private'), ('friends_only', 'Friends Only')],
+        choices=[('public', 'Public'), ('followers', 'Followers Only'), ('private', 'Private')],
         default='public',
     )
     email_updates = models.BooleanField(default=True)
+    discover_by_email = models.BooleanField(default=True)
+    discover_by_phone = models.BooleanField(default=True)
+    allow_message_requests = models.BooleanField(default=False)
+    show_read_receipts = models.BooleanField(default=True)
+    display_sensitive_media = models.BooleanField(default=False)
+    mark_media_sensitive = models.BooleanField(default=False)
+    personalization_enabled = models.BooleanField(default=True)
     interests = models.JSONField(default=list, blank=True)
     onboarding_completed = models.BooleanField(default=False)
     tier = models.CharField(max_length=20, choices=[('free', 'Free'), ('creator', 'Creator'), ('premium', 'Premium')], default='free')
@@ -46,6 +55,7 @@ class DirectMessage(models.Model):
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_messages')
     content = models.TextField()
     read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

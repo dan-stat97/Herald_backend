@@ -6,8 +6,9 @@ from rest_framework import serializers
 from datetime import timedelta
 import uuid
 from django.core.cache import cache
+from django.db.models import F
 from django.utils import timezone
-from .models import LiveStream, StreamChatMessage, StreamDonation, StreamViewerEvent
+from .models import LiveStream, StreamChatMessage, StreamDonation, StreamViewerEvent, StreamLike, StreamAmplify
 from .ivs_service import (
     IVSProvisioningError,
     create_host_session,
@@ -22,6 +23,8 @@ from users.models import User as UserProfile
 class LiveStreamSerializer(serializers.ModelSerializer):
     user_id = serializers.UUIDField(source='user.id', read_only=True)
     host = serializers.SerializerMethodField()
+    is_liked = serializers.SerializerMethodField()
+    is_amplified = serializers.SerializerMethodField()
 
     class Meta:
         model = LiveStream
@@ -30,14 +33,15 @@ class LiveStreamSerializer(serializers.ModelSerializer):
             'provider', 'status', 'stream_url', 'playback_url', 'thumbnail_url',
             'ingest_endpoint', 'provider_stream_key', 'ivs_channel_arn', 'ivs_stage_arn',
             'ivs_stage_rtmps_endpoint', 'ivs_stage_whip_endpoint', 'host_token_expires_at',
-            'viewer_count',
+            'viewer_count', 'views_count', 'likes_count', 'amplifies_count', 'is_liked', 'is_amplified',
             'started_at', 'ended_at', 'scheduled_for', 'created_at'
         ]
         read_only_fields = [
             'id', 'user_id', 'host', 'playback_url', 'ingest_endpoint',
             'provider_stream_key', 'ivs_channel_arn', 'ivs_stage_arn',
             'ivs_stage_rtmps_endpoint', 'ivs_stage_whip_endpoint',
-            'host_token_expires_at', 'viewer_count', 'started_at', 'ended_at', 'created_at'
+            'host_token_expires_at', 'viewer_count', 'views_count', 'likes_count', 'amplifies_count',
+            'is_liked', 'is_amplified', 'started_at', 'ended_at', 'created_at'
         ]
 
     def validate(self, attrs):
@@ -67,6 +71,41 @@ class LiveStreamSerializer(serializers.ModelSerializer):
             'avatar_url': user.avatar_url,
             'is_verified': bool(user.is_verified),
         }
+
+    def _viewer_profile(self, request):
+        if not request or not request.user or not request.user.is_authenticated:
+            return None
+        profile = getattr(request, '_cached_stream_profile', None)
+        if profile is not None:
+            return profile
+        try:
+            profile = UserProfile.objects.only('id', 'user_id').get(user_id=request.user)
+        except UserProfile.DoesNotExist:
+            profile = None
+        request._cached_stream_profile = profile
+        return profile
+
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        profile = self._viewer_profile(request)
+        if not profile:
+            return False
+        liked_ids = getattr(request, '_cached_stream_liked_ids', None)
+        if liked_ids is None:
+            liked_ids = set(StreamLike.objects.filter(user=profile).values_list('stream_id', flat=True))
+            request._cached_stream_liked_ids = liked_ids
+        return obj.pk in liked_ids
+
+    def get_is_amplified(self, obj):
+        request = self.context.get('request')
+        profile = self._viewer_profile(request)
+        if not profile:
+            return False
+        amplified_ids = getattr(request, '_cached_stream_amplified_ids', None)
+        if amplified_ids is None:
+            amplified_ids = set(StreamAmplify.objects.filter(user=profile).values_list('stream_id', flat=True))
+            request._cached_stream_amplified_ids = amplified_ids
+        return obj.pk in amplified_ids
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -145,6 +184,19 @@ class LiveStreamViewSet(viewsets.ModelViewSet):
             return UserProfile.objects.only('id', 'user_id').get(user_id=request.user)
         except UserProfile.DoesNotExist:
             return None
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if request.user and request.user.is_authenticated:
+            profile = self._request_profile(request)
+            if profile:
+                view_key = f"stream_view:{instance.pk}:{profile.pk}"
+                if not cache.get(view_key):
+                    LiveStream.objects.filter(pk=instance.pk).update(views_count=F('views_count') + 1)
+                    cache.set(view_key, 1, 86_400)
+                    instance.views_count = (instance.views_count or 0) + 1
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
     
     def get_queryset(self):
         status_filter = self.request.query_params.get('status')
@@ -301,6 +353,46 @@ class LiveStreamViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(stream)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post', 'delete'], permission_classes=[permissions.IsAuthenticated])
+    def like(self, request, pk=None):
+        stream = self.get_object()
+        profile = self._request_profile(request)
+        if not profile:
+            return Response({'detail': 'User profile not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if request.method == 'POST':
+            _, created = StreamLike.objects.get_or_create(stream=stream, user=profile)
+            if created:
+                LiveStream.objects.filter(pk=stream.pk).update(likes_count=F('likes_count') + 1)
+            new_count = stream.likes_count + (1 if created else 0)
+            return Response({'success': True, 'liked': True, 'likes_count': new_count})
+
+        deleted, _ = StreamLike.objects.filter(stream=stream, user=profile).delete()
+        if deleted:
+            LiveStream.objects.filter(pk=stream.pk).update(likes_count=F('likes_count') - 1)
+        new_count = max(0, stream.likes_count - (1 if deleted else 0))
+        return Response({'success': True, 'liked': False, 'likes_count': new_count})
+
+    @action(detail=True, methods=['post', 'delete'], permission_classes=[permissions.IsAuthenticated], url_path='amplify')
+    def amplify(self, request, pk=None):
+        stream = self.get_object()
+        profile = self._request_profile(request)
+        if not profile:
+            return Response({'detail': 'User profile not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if request.method == 'POST':
+            _, created = StreamAmplify.objects.get_or_create(stream=stream, user=profile)
+            if created:
+                LiveStream.objects.filter(pk=stream.pk).update(amplifies_count=F('amplifies_count') + 1)
+            new_count = stream.amplifies_count + (1 if created else 0)
+            return Response({'success': True, 'amplified': True, 'amplifies_count': new_count})
+
+        deleted, _ = StreamAmplify.objects.filter(stream=stream, user=profile).delete()
+        if deleted:
+            LiveStream.objects.filter(pk=stream.pk).update(amplifies_count=F('amplifies_count') - 1)
+        new_count = max(0, stream.amplifies_count - (1 if deleted else 0))
+        return Response({'success': True, 'amplified': False, 'amplifies_count': new_count})
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def host_session(self, request, pk=None):

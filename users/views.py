@@ -18,9 +18,11 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from core.pagination import StandardPagination
 from .models import User as UserProfile
+from .privacy import can_view_user_content, filter_visible_posts, get_viewer_profile
 from .query_utils import attach_user_profile_metrics, optimize_user_profile_queryset
 from .serializers import UserProfileSerializer, UserReplySerializer, UserSignupSerializer
 from posts.cache_utils import get_post_timeline_cache_version
+from posts.cache_utils import bump_post_timeline_cache_version
 from posts.models import Comment, Post, PostLike, PostRepost
 from tasks.models import UserTask
 from tasks.rewards import claim_user_task_reward, ensure_default_tasks, grant_points
@@ -95,6 +97,18 @@ def build_auth_user_payload(profile):
         'bio': profile.bio,
         'location': profile.location,
         'website': profile.website,
+        'phone_number': profile.phone_number,
+        'notifications_enabled': profile.notifications_enabled,
+        'push_notifications': profile.push_notifications,
+        'privacy_level': profile.privacy_level,
+        'email_updates': profile.email_updates,
+        'discover_by_email': profile.discover_by_email,
+        'discover_by_phone': profile.discover_by_phone,
+        'allow_message_requests': profile.allow_message_requests,
+        'show_read_receipts': profile.show_read_receipts,
+        'display_sensitive_media': profile.display_sensitive_media,
+        'mark_media_sensitive': profile.mark_media_sensitive,
+        'personalization_enabled': profile.personalization_enabled,
         'tier': profile.tier,
         'reputation': profile.reputation,
         'is_verified': profile.is_verified,
@@ -373,11 +387,25 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['patch'], url_path='me/settings')
     def update_settings(self, request):
         profile = ensure_user_profile(request.user)
-        allowed_fields = ['notifications_enabled', 'privacy_level', 'email_updates']
+        allowed_fields = [
+            'notifications_enabled',
+            'push_notifications',
+            'privacy_level',
+            'email_updates',
+            'discover_by_email',
+            'discover_by_phone',
+            'allow_message_requests',
+            'show_read_receipts',
+            'display_sensitive_media',
+            'mark_media_sensitive',
+            'personalization_enabled',
+        ]
         for field in allowed_fields:
             if field in request.data:
                 setattr(profile, field, request.data[field])
         profile.save()
+        if any(field in request.data for field in ['privacy_level', 'personalization_enabled']):
+            bump_post_timeline_cache_version()
         return Response({'success': True, 'settings': {f: getattr(profile, f, None) for f in allowed_fields}})
 
 
@@ -649,6 +677,13 @@ class UserPostsView(views.APIView):
             except UserProfile.DoesNotExist:
                 return Response({'error': 'User not found'}, status=404)
 
+        viewer_profile = get_viewer_profile(request)
+        if not can_view_user_content(viewer_profile, profile):
+            return Response(
+                {'data': [], 'pagination': {'page': 1, 'limit': 0, 'has_more': False}, 'protected': True},
+                status=200,
+            )
+
         tab = request.query_params.get('tab', 'posts')
         try:
             limit = max(1, min(int(request.query_params.get('limit', 20)), 50))
@@ -664,7 +699,10 @@ class UserPostsView(views.APIView):
         cached_payload = cache.get(cache_key)
         if cached_payload is not None:
             return Response(cached_payload)
-        base_posts = Post.objects.select_related('author_id', 'author_id__user_id')
+        base_posts = filter_visible_posts(
+            Post.objects.select_related('author_id', 'author_id__user_id'),
+            request,
+        )
 
         reposted_at_subquery = (
             PostRepost.objects
@@ -780,6 +818,10 @@ class UserRepliesView(views.APIView):
                 profile = UserProfile.objects.get(pk=pk)
             except UserProfile.DoesNotExist:
                 return Response({'error': 'User not found'}, status=404)
+
+        viewer_profile = get_viewer_profile(request)
+        if not can_view_user_content(viewer_profile, profile):
+            return Response([])
 
         replies = (
             Comment.objects

@@ -182,13 +182,13 @@ class PostSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'author_id', 'username', 'display_name', 'avatar_url', 'is_verified', 'is_creator',
             'content', 'media_url', 'media_urls', 'media_type', 'likes_count',
-            'comments_count', 'shares_count', 'bookmarks_count', 'views_count', 'httn_earned',
+            'comments_count', 'shares_count', 'bookmarks_count', 'views_count', 'httn_earned', 'is_sensitive_media',
             'is_liked', 'is_reposted', 'is_bookmarked', 'profile_reposted', 'profile_reposted_at',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'author_id', 'username', 'display_name', 'avatar_url', 'is_verified', 'is_creator',
-            'likes_count', 'comments_count', 'shares_count', 'bookmarks_count', 'views_count', 'httn_earned',
+            'likes_count', 'comments_count', 'shares_count', 'bookmarks_count', 'views_count', 'httn_earned', 'is_sensitive_media',
             'is_liked', 'is_reposted', 'is_bookmarked', 'profile_reposted', 'profile_reposted_at',
             'created_at', 'updated_at'
         ]
@@ -480,6 +480,7 @@ class PostSerializer(serializers.ModelSerializer):
                 'bookmarks_count': 0,
                 'views_count': getattr(instance, 'views_count', 0),
                 'httn_earned': instance.httn_earned,
+                'is_sensitive_media': getattr(instance, 'is_sensitive_media', False),
                 'created_at': instance.created_at.isoformat() if instance.created_at else None,
                 'updated_at': instance.updated_at.isoformat() if instance.updated_at else None,
                 'author_id': None,

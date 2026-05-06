@@ -10,6 +10,7 @@ class Post(models.Model):
 	media_url = models.URLField(null=True, blank=True)
 	media_urls = models.JSONField(default=list, blank=True)
 	media_type = models.CharField(max_length=20, choices=[('image', 'Image'), ('video', 'Video'), ('reel', 'Reel')], null=True, blank=True)
+	is_sensitive_media = models.BooleanField(default=False)
 	likes_count = models.IntegerField(default=0)
 	comments_count = models.IntegerField(default=0)
 	shares_count = models.IntegerField(default=0)

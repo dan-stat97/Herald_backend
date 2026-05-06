@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 def _create(user, notification_type, title, message,
             actor=None, resource_type=None, resource_id=None):
     try:
+        if hasattr(user, 'notifications_enabled') and not user.notifications_enabled:
+            return
         from notifications.models import Notification
         Notification.objects.create(
             user_id=user,

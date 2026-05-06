@@ -15,6 +15,7 @@ from .ranking import rank_feed_posts
 from .feed_view import PostFeedView as _PostFeedView
 from tasks.rewards import award_post_creation, award_post_engagement_milestones
 from users.models import User as UserProfile
+from users.privacy import filter_visible_posts
 from users.views import ensure_user_profile
 from core.pagination import StandardPagination
 
@@ -36,6 +37,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		"""Optimize queryset with select_related to prevent N+1 queries"""
 		try:
 			queryset = Post.objects.select_related('author_id', 'author_id__user_id').all().order_by('-created_at')
+			queryset = filter_visible_posts(queryset, self.request)
 			sort = self.request.query_params.get('sort')
 			allowed_sort_fields = {'created_at', 'likes_count', 'comments_count', 'shares_count'}
 			if sort and sort.lstrip('-') in allowed_sort_fields:
@@ -44,7 +46,7 @@ class PostViewSet(viewsets.ModelViewSet):
 		except Exception as e:
 			# Fallback to basic queryset if select_related fails
 			print(f"Error in get_queryset: {e}")
-			queryset = Post.objects.all().order_by('-created_at')
+			queryset = filter_visible_posts(Post.objects.all().order_by('-created_at'), self.request)
 			sort = self.request.query_params.get('sort')
 			allowed_sort_fields = {'created_at', 'likes_count', 'comments_count', 'shares_count'}
 			if sort and sort.lstrip('-') in allowed_sort_fields:
@@ -202,7 +204,13 @@ class PostViewSet(viewsets.ModelViewSet):
 				serializer.instance = existing_post
 				return
 
-			post = serializer.save(author_id=profile)
+			media_urls = list(serializer.validated_data.get('media_urls') or [])
+			media_url = serializer.validated_data.get('media_url')
+			has_media = bool(media_urls or media_url)
+			post = serializer.save(
+				author_id=profile,
+				is_sensitive_media=bool(profile.mark_media_sensitive and has_media),
+			)
 			award_post_creation(profile, post)
 			bump_post_timeline_cache_version()
 			serializer.instance = post
@@ -376,6 +384,7 @@ class PostViewSet(viewsets.ModelViewSet):
 				)
 				.order_by('-engagement', '-created_at')
 			)
+			qs = filter_visible_posts(qs, request)
 			if extra_filter:
 				qs = qs.filter(**extra_filter)
 			# Evaluate to list immediately — avoids calling .exists() on a sliced

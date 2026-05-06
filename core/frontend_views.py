@@ -14,6 +14,7 @@ from posts.models import Post
 from posts.serializers import PostSerializer
 from core.pagination import StandardPagination
 from users.models import User as UserProfile
+from users.privacy import filter_visible_posts
 from users.query_utils import attach_user_profile_metrics, optimize_user_profile_queryset
 
 
@@ -46,7 +47,7 @@ def _normalized_search_variants(query: str) -> tuple[str, set[str], list[str]]:
     return normalized, {variant.lower() for variant in variants if variant}, tokens
 
 
-def _build_post_search_queryset(query: str):
+def _build_post_search_queryset(query: str, request):
     normalized, variants, tokens = _normalized_search_variants(query)
     if not normalized:
         return Post.objects.none()
@@ -63,11 +64,12 @@ def _build_post_search_queryset(query: str):
             token_clause &= Q(content__icontains=token)
         clause |= token_clause
 
-    return (
+    queryset = (
         Post.objects.filter(clause)
         .select_related("author_id", "author_id__user_id")
         .order_by("-likes_count", "-comments_count", "-created_at")
     )
+    return filter_visible_posts(queryset, request)
 
 
 def _build_user_search_queryset(query: str):
@@ -203,7 +205,7 @@ class TrendingTopicsView(APIView):
 
     def get(self, request):
         limit = min(int(request.query_params.get("limit", 10)), 100)
-        posts = Post.objects.order_by("-created_at").values_list("content", flat=True)[:1000]
+        posts = filter_visible_posts(Post.objects.order_by("-created_at"), request).values_list("content", flat=True)[:1000]
 
         hashtag_pattern = re.compile(r"#([A-Za-z0-9_]+)")
         counter = Counter()
@@ -234,7 +236,7 @@ class SearchPostsView(APIView):
         if not query:
             return Response({"data": [], "pagination": {"page": 1, "limit": 20, "total": 0, "total_pages": 0}})
 
-        queryset = _build_post_search_queryset(query)
+        queryset = _build_post_search_queryset(query, request)
         paginator = StandardPagination()
         page = paginator.paginate_queryset(queryset, request)
         serializer = PostSerializer(
@@ -267,7 +269,7 @@ class UnifiedSearchView(APIView):
         users_ranked = _sort_user_search_results(users_candidates, query)[:limit]
         users_data = _serialize_search_users(users_ranked, request)
 
-        posts_qs = _build_post_search_queryset(query)[: limit * 2]
+        posts_qs = _build_post_search_queryset(query, request)[: limit * 2]
         posts_list = list(posts_qs)
         posts_data = PostSerializer(
             posts_list,

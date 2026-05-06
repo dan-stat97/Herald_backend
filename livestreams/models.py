@@ -32,6 +32,9 @@ class LiveStream(models.Model):
     ivs_stage_whip_endpoint = models.URLField(null=True, blank=True)
     host_token_expires_at = models.DateTimeField(null=True, blank=True)
     viewer_count = models.IntegerField(default=0)
+    views_count = models.IntegerField(default=0)
+    likes_count = models.IntegerField(default=0)
+    amplifies_count = models.IntegerField(default=0)
     started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)
     scheduled_for = models.DateTimeField(null=True, blank=True)
@@ -116,3 +119,45 @@ class StreamViewerEvent(models.Model):
 
     def __str__(self):
         return f"{self.user.username} {self.event_type} {self.stream.title}"
+
+
+class StreamLike(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    stream = models.ForeignKey(LiveStream, on_delete=models.CASCADE, related_name='likes')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='stream_likes')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'stream_likes'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['stream', 'user'], name='uniq_stream_like_stream_user'),
+        ]
+        indexes = [
+            models.Index(fields=['user', '-created_at'], name='stream_like_user_created_idx'),
+            models.Index(fields=['stream', '-created_at'], name='stream_like_stream_created_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} liked {self.stream.title}"
+
+
+class StreamAmplify(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    stream = models.ForeignKey(LiveStream, on_delete=models.CASCADE, related_name='amplifies')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='stream_amplifies')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'stream_amplifies'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['stream', 'user'], name='uniq_stream_amplify_stream_user'),
+        ]
+        indexes = [
+            models.Index(fields=['user', '-created_at'], name='stream_amp_user_created_idx'),
+            models.Index(fields=['stream', '-created_at'], name='stream_amp_stream_created_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} amplified {self.stream.title}"

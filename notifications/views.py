@@ -12,6 +12,8 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
 	def get_queryset(self):
 		user = UserProfile.objects.get(user_id=self.request.user)
+		if not user.notifications_enabled:
+			return Notification.objects.none()
 		queryset = Notification.objects.filter(user_id=user).order_by('-created_at')
 		read = self.request.query_params.get('read')
 		if read is not None:

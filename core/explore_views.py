@@ -9,6 +9,7 @@ from posts.models import Post
 from posts.ranking import build_twitter_feed
 from posts.serializers import PostSerializer
 from users.models import User as UserProfile
+from users.privacy import filter_visible_posts
 
 from .news_clusters import _build_clusters, _topic_search_variants, build_trending_topics
 
@@ -142,7 +143,7 @@ def _build_explore_section_feed(request, section, limit=18):
             query |= Q(content__icontains=variant)
 
     posts_qs = (
-        Post.objects.filter(query)
+        filter_visible_posts(Post.objects.filter(query), request)
         .select_related('author_id', 'author_id__user_id')
         .order_by('-likes_count', '-comments_count', '-shares_count', '-created_at')
     ) if has_topic_filters else Post.objects.none()

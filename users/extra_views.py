@@ -1,4 +1,5 @@
 from datetime import timedelta
+import re
 
 from django.db import transaction as db_transaction
 from django.db.models import Q, Sum
@@ -10,6 +11,7 @@ from rest_framework.views import APIView
 from communities.models import CommunityMember
 from core.models import Follow
 from core.pagination import StandardPagination
+from posts.cache_utils import bump_post_timeline_cache_version
 from posts.models import Post
 from tasks.models import UserTask
 from tasks.rewards import claim_user_task_reward
@@ -62,9 +64,17 @@ class UserSearchView(APIView):
             return Response([])
 
         limit = min(int(request.query_params.get("limit", 20)), 100)
-        users_queryset = optimize_user_profile_queryset(UserProfile.objects.filter(
-            Q(username__icontains=query) | Q(display_name__icontains=query)
-        ).order_by("-reputation", "username"))
+        normalized_phone = re.sub(r'[^0-9+]', '', query)
+        filters = (
+            Q(username__icontains=query)
+            | Q(display_name__icontains=query)
+            | Q(email__iexact=query, discover_by_email=True)
+        )
+        if normalized_phone:
+            filters |= Q(phone_number=normalized_phone, discover_by_phone=True)
+        users_queryset = optimize_user_profile_queryset(
+            UserProfile.objects.filter(filters).order_by("-reputation", "username")
+        )
 
         users = attach_user_profile_metrics(users_queryset[:limit], request.user)
         return Response(UserProfileSerializer(users, many=True, context={'request': request}).data)
@@ -73,19 +83,31 @@ class UserSearchView(APIView):
 class UserSettingsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+    ALLOWED_FIELDS = [
+        "notifications_enabled",
+        "push_notifications",
+        "email_updates",
+        "privacy_level",
+        "discover_by_email",
+        "discover_by_phone",
+        "allow_message_requests",
+        "show_read_receipts",
+        "display_sensitive_media",
+        "mark_media_sensitive",
+        "personalization_enabled",
+    ]
+
+    @classmethod
+    def _serialize(cls, profile):
+        return {field: getattr(profile, field) for field in cls.ALLOWED_FIELDS}
+
     def get(self, request):
         try:
             profile = UserProfile.objects.get(user_id=request.user)
         except UserProfile.DoesNotExist:
             return Response({"error": "User profile not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response(
-            {
-                "notifications_enabled": profile.notifications_enabled,
-                "privacy_level": profile.privacy_level,
-                "email_updates": profile.email_updates,
-            }
-        )
+        return Response(self._serialize(profile))
 
     def patch(self, request):
         try:
@@ -93,10 +115,8 @@ class UserSettingsView(APIView):
         except UserProfile.DoesNotExist:
             return Response({"error": "User profile not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        allowed = ["notifications_enabled", "privacy_level", "email_updates"]
         updated_fields = []
-
-        for field in allowed:
+        for field in self.ALLOWED_FIELDS:
             if field in request.data:
                 setattr(profile, field, request.data[field])
                 updated_fields.append(field)
@@ -104,14 +124,10 @@ class UserSettingsView(APIView):
         if updated_fields:
             updated_fields.append("updated_at")
             profile.save(update_fields=updated_fields)
+            if any(field in request.data for field in ["privacy_level", "personalization_enabled"]):
+                bump_post_timeline_cache_version()
 
-        return Response(
-            {
-                "notifications_enabled": profile.notifications_enabled,
-                "privacy_level": profile.privacy_level,
-                "email_updates": profile.email_updates,
-            }
-        )
+        return Response(self._serialize(profile))
 
 
 class UserEarningsView(APIView):
