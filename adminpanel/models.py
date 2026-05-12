@@ -42,4 +42,42 @@ class AdCampaign(models.Model):
 	created_at = models.DateTimeField(auto_now_add=True)
 	updated_at = models.DateTimeField(auto_now=True)
 
+
+class AdminRoleAssignment(models.Model):
+	ROLE_SUPER_ADMIN = 'super_admin'
+	ROLE_ADMIN = 'admin'
+	ROLE_MODERATOR = 'moderator'
+	ROLE_SUPPORT = 'support'
+	ROLE_ANALYTICS_VIEWER = 'analytics_viewer'
+	ROLE_ADS_MANAGER = 'ads_manager'
+
+	ROLE_CHOICES = [
+		(ROLE_SUPER_ADMIN, 'Super Admin'),
+		(ROLE_ADMIN, 'Admin'),
+		(ROLE_MODERATOR, 'Moderator'),
+		(ROLE_SUPPORT, 'Support'),
+		(ROLE_ANALYTICS_VIEWER, 'Analytics Viewer'),
+		(ROLE_ADS_MANAGER, 'Ads Manager'),
+	]
+
+	id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+	user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='admin_role_assignment')
+	role = models.CharField(max_length=32, choices=ROLE_CHOICES)
+	created_by = models.ForeignKey(
+		User,
+		null=True,
+		blank=True,
+		on_delete=models.SET_NULL,
+		related_name='admin_roles_created',
+	)
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		db_table = 'admin_role_assignments'
+		ordering = ['role', 'created_at']
+
+	def __str__(self):
+		return f"{self.user.username}: {self.role}"
+
 # Create your models here.

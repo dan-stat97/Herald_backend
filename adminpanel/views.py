@@ -9,11 +9,18 @@ from livestreams.models import LiveStream
 from django.db.models import Count, Sum, F
 from django.db.models import Q
 from django.db.models.functions import TruncDate
+from adminpanel.permissions import (
+    CanBanUsers,
+    CanViewAnalytics,
+    CanViewPosts,
+    CanViewUsers,
+)
+from .permissions import build_admin_context
 
 
 class AdminStatsView(views.APIView):
     """Admin dashboard statistics"""
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [CanViewAnalytics]
     
     def get(self, request):
         # Get total counts
@@ -46,7 +53,7 @@ class AdminStatsView(views.APIView):
 
 class AdminAnalyticsView(views.APIView):
     """Admin analytics payload for dashboard charts and top content."""
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [CanViewAnalytics]
 
     def get(self, request):
         from django.utils import timezone
@@ -149,7 +156,7 @@ class AdminAnalyticsView(views.APIView):
 
 class AdminUsersView(views.APIView):
     """Admin user management"""
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [CanViewUsers]
     
     def get(self, request):
         from users.serializers import UserProfileSerializer
@@ -167,8 +174,19 @@ class AdminUsersView(views.APIView):
         
         paginated_users = users[start:end]
         
+        serialized = UserProfileSerializer(paginated_users, many=True).data
+        admin_context_by_user_id = {
+            str(item.id): build_admin_context(item.user_id)
+            for item in paginated_users
+        }
+        for item in serialized:
+            admin_context = admin_context_by_user_id.get(str(item['id']), {})
+            item['admin_role'] = admin_context.get('role', 'user')
+            item['is_admin'] = admin_context.get('is_admin', False)
+            item['admin_permissions'] = admin_context.get('permissions', [])
+
         return Response({
-            'data': UserProfileSerializer(paginated_users, many=True).data,
+            'data': serialized,
             'pagination': {
                 'page': page,
                 'limit': limit,
@@ -180,7 +198,7 @@ class AdminUsersView(views.APIView):
 
 class AdminPostsView(views.APIView):
     """Admin post management"""
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [CanViewPosts]
     
     def get(self, request):
         from posts.serializers import PostSerializer
@@ -211,7 +229,7 @@ class AdminPostsView(views.APIView):
 
 class AdminBanUserView(views.APIView):
     """Ban a user"""
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [CanBanUsers]
     
     def post(self, request, user_id):
         try:

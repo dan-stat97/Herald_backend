@@ -80,7 +80,7 @@ from estore.store_views import StoreProductsView, StoreCheckoutView, StoreOrders
 from adminpanel.views import AdminStatsView, AdminAnalyticsView, AdminUsersView, AdminPostsView, AdminBanUserView
 from adminpanel.reports import AdminReportView, AdminReportDetailView
 from adminpanel.extra_views import (
-    AdminRoleView, AdminVerifyUserView,
+    AdminRoleView, AdminRoleAssignmentDetailView, AdminRoleAssignmentListView, AdminVerifyUserView,
     AdCampaignListCreateView, AdCampaignDetailView,
     PublicActiveAdsView, AdminAdCampaignListView, AdminAdCampaignDetailView,
 )
@@ -231,6 +231,8 @@ urlpatterns = [
     
     # Admin endpoints
     path('v1/admin/me/role/', AdminRoleView.as_view(), name='admin-role'),
+    path('v1/admin/roles/', AdminRoleAssignmentListView.as_view(), name='admin-roles'),
+    path('v1/admin/roles/<uuid:user_id>/', AdminRoleAssignmentDetailView.as_view(), name='admin-roles-detail'),
     path('v1/admin/stats/', AdminStatsView.as_view(), name='admin-stats'),
     path('v1/admin/dashboard/stats/', AdminStatsView.as_view(), name='admin-dashboard-stats'),
     path('v1/admin/analytics/', AdminAnalyticsView.as_view(), name='admin-analytics'),

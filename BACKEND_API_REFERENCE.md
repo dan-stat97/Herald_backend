@@ -640,11 +640,20 @@ Order statuses: `pending`, `completed`, `cancelled`.
 
 ## Admin
 
-All admin endpoints require staff/admin privileges.
+Admin access is now role-based. Current roles:
+- `super_admin`
+- `admin`
+- `moderator`
+- `support`
+- `analytics_viewer`
+- `ads_manager`
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/admin/me/role/` | Admin | Current admin role |
+| `GET` | `/api/v1/admin/roles/` | Admin | List assigned admin roles |
+| `POST` | `/api/v1/admin/roles/` | Admin | Assign or update a user's admin role |
+| `DELETE` | `/api/v1/admin/roles/{user_id}/` | Admin | Remove a user's admin role |
 | `GET` | `/api/v1/admin/stats/` | Admin | Admin stats |
 | `GET` | `/api/v1/admin/dashboard/stats/` | Admin | Dashboard stats alias |
 | `GET` | `/api/v1/admin/users/` | Admin | Admin user list |

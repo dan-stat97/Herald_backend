@@ -1,11 +1,21 @@
-from rest_framework import permissions, status
+from django.db import models
+from rest_framework import permissions as drf_permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.pagination import StandardPagination
 from users.models import User as UserProfile
 
-from .models import AdCampaign
+from .models import AdCampaign, AdminRoleAssignment
+from .permissions import (
+    CanManageAds,
+    CanManageRoles,
+    CanVerifyUsers,
+    CanViewAds,
+    CanViewRoles,
+    build_admin_context,
+    sync_staff_flag,
+)
 
 
 def _serialize_campaign(item):
@@ -32,17 +42,88 @@ def _serialize_campaign(item):
 
 
 class AdminRoleView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [drf_permissions.IsAuthenticated]
 
     def get(self, request):
+        return Response(build_admin_context(request.user))
+
+
+def _serialize_role_assignment(item):
+    return {
+        'user_id': str(item.user_id),
+        'username': item.user.username,
+        'display_name': item.user.display_name,
+        'avatar_url': item.user.avatar_url,
+        'role': item.role,
+        'created_at': item.created_at,
+        'updated_at': item.updated_at,
+        'created_by': str(item.created_by_id) if item.created_by_id else None,
+    }
+
+
+class AdminRoleAssignmentListView(APIView):
+    permission_classes = [CanViewRoles]
+
+    def get(self, request):
+        queryset = AdminRoleAssignment.objects.select_related('user', 'created_by').order_by('role', 'user__username')
+        search = (request.query_params.get('search') or '').strip()
+        if search:
+            queryset = queryset.filter(
+                models.Q(user__username__icontains=search)
+                | models.Q(user__display_name__icontains=search)
+                | models.Q(user__email__icontains=search)
+            )
+
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        return paginator.get_paginated_response([_serialize_role_assignment(item) for item in page])
+
+    def post(self, request):
+        if not CanManageRoles().has_permission(request, self):
+            return Response({'error': 'Admin role management access required'}, status=status.HTTP_403_FORBIDDEN)
+
+        user_id = request.data.get('user_id')
+        role = request.data.get('role')
+        valid_roles = {choice[0] for choice in AdminRoleAssignment.ROLE_CHOICES}
+        if not user_id or role not in valid_roles:
+            return Response({'error': 'Valid user_id and role are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            profile = UserProfile.objects.get(id=user_id)
+        except UserProfile.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        assignment, created = AdminRoleAssignment.objects.update_or_create(
+            user=profile,
+            defaults={
+                'role': role,
+                'created_by': getattr(request.user, 'user', None),
+            },
+        )
+        sync_staff_flag(profile)
         return Response({
-            "is_admin": bool(request.user.is_staff),
-            "role": "admin" if request.user.is_staff else "user",
-        })
+            'success': True,
+            'created': created,
+            'assignment': _serialize_role_assignment(assignment),
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class AdminRoleAssignmentDetailView(APIView):
+    permission_classes = [CanManageRoles]
+
+    def delete(self, request, user_id):
+        try:
+            profile = UserProfile.objects.get(id=user_id)
+        except UserProfile.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        deleted, _ = AdminRoleAssignment.objects.filter(user=profile).delete()
+        sync_staff_flag(profile)
+        return Response({'success': True, 'deleted': bool(deleted)})
 
 
 class AdminVerifyUserView(APIView):
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [CanVerifyUsers]
 
     def post(self, request, user_id):
         try:
@@ -58,7 +139,7 @@ class AdminVerifyUserView(APIView):
 # ── Public: active ads for display in the app ──────────────────────────────
 class PublicActiveAdsView(APIView):
     """Returns currently active ad campaigns for display — no auth required."""
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [drf_permissions.AllowAny]
 
     def get(self, request):
         limit = min(int(request.query_params.get('limit', 10)), 20)
@@ -94,7 +175,7 @@ class PublicActiveAdsView(APIView):
 # ── Admin: full CRUD for all campaigns ────────────────────────────────────
 class AdminAdCampaignListView(APIView):
     """Admin-only: list all campaigns and create new ones."""
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [CanViewAds]
 
     def get(self, request):
         queryset = AdCampaign.objects.select_related('user').order_by('-created_at')
@@ -107,6 +188,8 @@ class AdminAdCampaignListView(APIView):
         return paginator.get_paginated_response([_serialize_campaign(a) for a in page])
 
     def post(self, request):
+        if not CanManageAds().has_permission(request, self):
+            return Response({"error": "Admin ad management access required"}, status=403)
         data = request.data
         title = data.get("title")
         if not title:
@@ -145,7 +228,7 @@ class AdminAdCampaignListView(APIView):
 
 class AdminAdCampaignDetailView(APIView):
     """Admin-only: get/update/delete a specific campaign."""
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [CanViewAds]
 
     def _get_campaign(self, campaign_id):
         try:
@@ -160,6 +243,8 @@ class AdminAdCampaignDetailView(APIView):
         return Response(_serialize_campaign(ad))
 
     def patch(self, request, campaign_id):
+        if not CanManageAds().has_permission(request, self):
+            return Response({"error": "Admin ad management access required"}, status=403)
         ad = self._get_campaign(campaign_id)
         if not ad:
             return Response({"error": "Campaign not found"}, status=404)
@@ -177,6 +262,8 @@ class AdminAdCampaignDetailView(APIView):
         return Response(_serialize_campaign(ad))
 
     def delete(self, request, campaign_id):
+        if not CanManageAds().has_permission(request, self):
+            return Response({"error": "Admin ad management access required"}, status=403)
         ad = self._get_campaign(campaign_id)
         if not ad:
             return Response({"error": "Campaign not found"}, status=404)
@@ -186,7 +273,7 @@ class AdminAdCampaignDetailView(APIView):
 
 # ── User-facing: own campaigns CRUD (unchanged behaviour) ─────────────────
 class AdCampaignListCreateView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [drf_permissions.IsAuthenticated]
 
     def get(self, request):
         try:
@@ -232,7 +319,7 @@ class AdCampaignListCreateView(APIView):
 
 
 class AdCampaignDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [drf_permissions.IsAuthenticated]
 
     def patch(self, request, campaign_id):
         try:

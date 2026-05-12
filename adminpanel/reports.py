@@ -6,6 +6,7 @@ from django.db import models
 from users.models import User as UserProfile
 from .models import AdminReport, Ban
 import uuid
+from .permissions import CanManageReports, CanViewReports
 
 
 class Report(models.Model):
@@ -57,14 +58,10 @@ class AdminReportView(APIView):
     def get(self, request):
         """Get all reports (admin only)"""
         try:
+            if not CanViewReports().has_permission(request, self):
+                return Response({'error': 'Admin report access required'}, status=status.HTTP_403_FORBIDDEN)
+
             profile = UserProfile.objects.get(user_id=request.user)
-            
-            # Check if admin
-            if not profile.user_id.is_staff:
-                return Response(
-                    {'error': 'Admin access required'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
             
             # Filter by status if provided
             report_status = request.query_params.get('status')
@@ -168,14 +165,10 @@ class AdminReportDetailView(APIView):
     def patch(self, request, report_id):
         """Update report status"""
         try:
+            if not CanManageReports().has_permission(request, self):
+                return Response({'error': 'Admin report management access required'}, status=status.HTTP_403_FORBIDDEN)
+
             profile = UserProfile.objects.get(user_id=request.user)
-            
-            # Check if admin
-            if not profile.user_id.is_staff:
-                return Response(
-                    {'error': 'Admin access required'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
             
             report = Report.objects.get(id=report_id)
             new_status = request.data.get('status')
