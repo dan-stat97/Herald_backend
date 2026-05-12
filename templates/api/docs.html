@@ -125,19 +125,79 @@
             font-size: 1.1rem;
         }
         .section-body {
+            padding: 18px 20px 22px;
+            background: #fbfcff;
+        }
+        .section-body p,
+        .section-body li {
+            font-size: 0.94rem;
+            line-height: 1.7;
+            color: var(--text);
+        }
+        .section-body p {
+            margin: 0 0 12px;
+        }
+        .section-body h4,
+        .section-body h5 {
+            margin: 18px 0 10px;
+            color: var(--text);
+        }
+        .section-body ul,
+        .section-body ol {
+            margin: 0 0 14px 18px;
             padding: 0;
         }
+        .section-body code {
+            font-family: "Cascadia Code", Consolas, monospace;
+            background: #eef3ff;
+            color: var(--code);
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 0.88rem;
+        }
         .section-body pre {
-            margin: 0;
-            padding: 18px 20px 22px;
+            margin: 12px 0 16px;
+            padding: 16px 18px;
             overflow: auto;
             white-space: pre-wrap;
             word-break: break-word;
             font-family: "Cascadia Code", Consolas, monospace;
-            font-size: 0.9rem;
+            font-size: 0.88rem;
             line-height: 1.65;
             color: var(--code);
-            background: #fbfcff;
+            background: #101828;
+            border-radius: 14px;
+        }
+        .section-body pre code {
+            background: transparent;
+            color: #eef2ff;
+            padding: 0;
+        }
+        .table-wrap {
+            overflow: auto;
+            margin: 14px 0 18px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: #fff;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 620px;
+        }
+        th, td {
+            padding: 12px 14px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+            font-size: 0.92rem;
+        }
+        th {
+            background: #f3f7ff;
+            font-weight: 700;
+        }
+        tr:last-child td {
+            border-bottom: 0;
         }
         .empty {
             display: none;
@@ -191,7 +251,7 @@
                             <h3>{{ section.heading }}</h3>
                         </div>
                         <div class="section-body">
-                            <pre>{{ section.body }}</pre>
+                            {{ section.html|safe }}
                         </div>
                     </section>
                 {% endfor %}

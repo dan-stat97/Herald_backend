@@ -648,6 +648,110 @@ Admin access is now role-based. Current roles:
 - `analytics_viewer`
 - `ads_manager`
 
+### RBAC Permissions
+
+The backend resolves admin access into these permission keys:
+- `analytics.view`
+- `users.view`
+- `users.verify`
+- `users.ban`
+- `posts.view`
+- `reports.view`
+- `reports.manage`
+- `ads.view`
+- `ads.manage`
+- `roles.view`
+- `roles.manage`
+
+### Full RBAC Matrix
+
+| Role | analytics.view | users.view | users.verify | users.ban | posts.view | reports.view | reports.manage | ads.view | ads.manage | roles.view | roles.manage |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `super_admin` | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `admin` | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No |
+| `moderator` | No | Yes | Yes | No | Yes | Yes | Yes | No | No | No | No |
+| `support` | No | Yes | No | No | No | Yes | No | No | No | No | No |
+| `analytics_viewer` | Yes | No | No | No | No | No | No | No | No | No | No |
+| `ads_manager` | Yes | No | No | No | No | No | No | Yes | Yes | No | No |
+
+### Endpoint-to-Permission Mapping
+
+| Endpoint | Required Permission |
+| --- | --- |
+| `GET /api/v1/admin/me/role/` | Authenticated user; returns resolved admin context if present |
+| `GET /api/v1/admin/roles/` | `roles.view` |
+| `POST /api/v1/admin/roles/` | `roles.manage` |
+| `DELETE /api/v1/admin/roles/{user_id}/` | `roles.manage` |
+| `GET /api/v1/admin/stats/` | `analytics.view` |
+| `GET /api/v1/admin/dashboard/stats/` | `analytics.view` |
+| `GET /api/v1/admin/analytics/` | `analytics.view` |
+| `GET /api/v1/admin/users/` | `users.view` |
+| `POST /api/v1/admin/users/{user_id}/verify/` | `users.verify` |
+| `POST /api/v1/admin/users/{user_id}/ban/` | `users.ban` |
+| `GET /api/v1/admin/posts/` | `posts.view` |
+| `GET /api/v1/admin/reports/` | `reports.view` |
+| `PATCH /api/v1/admin/reports/{report_id}/` | `reports.manage` |
+| `GET /api/v1/admin/ads/` | `ads.view` |
+| `GET /api/v1/admin/ads/{campaign_id}/` | `ads.view` |
+| `POST /api/v1/admin/ads/` | `ads.manage` |
+| `PATCH /api/v1/admin/ads/{campaign_id}/` | `ads.manage` |
+| `DELETE /api/v1/admin/ads/{campaign_id}/` | `ads.manage` |
+
+### How a User Becomes an Admin Role
+
+There are now two paths:
+
+1. Explicit role assignment
+- A user becomes `super_admin`, `admin`, `moderator`, `support`, `analytics_viewer`, or `ads_manager` when an authorized operator creates or updates an `admin_role_assignments` row for that user's Herald profile.
+- This is done through:
+  - `POST /api/v1/admin/roles/`
+- Request body:
+```json
+{
+  "user_id": "USER_PROFILE_UUID",
+  "role": "moderator"
+}
+```
+- Removing the role is done through:
+  - `DELETE /api/v1/admin/roles/{user_id}/`
+
+2. Legacy Django fallback
+- If a user has no explicit role assignment:
+  - Django `is_superuser = true` resolves to `super_admin`
+  - Django `is_staff = true` resolves to `admin`
+- This fallback exists for backward compatibility and bootstrap access.
+
+### Who Can Assign Roles
+
+- Only a user who resolves to `super_admin` can call role-assignment write endpoints, because `roles.manage` is only granted to `super_admin`.
+- A regular `admin` can inspect roles with `roles.view`, but cannot assign or remove them.
+
+### Bootstrap / First Super Admin
+
+If no explicit admin roles exist yet, the first role assignment should be done by a Django superuser account:
+- Django superuser resolves to `super_admin`
+- that account can call `POST /api/v1/admin/roles/`
+- once explicit assignments exist, ongoing role management should happen through the RBAC endpoints instead of relying on raw Django flags
+
+### `GET /api/v1/admin/me/role/` Response Shape
+
+```json
+{
+  "is_admin": true,
+  "is_super_admin": false,
+  "role": "moderator",
+  "roles": ["moderator"],
+  "permissions": [
+    "posts.view",
+    "reports.manage",
+    "reports.view",
+    "users.verify",
+    "users.view"
+  ],
+  "source": "assignment"
+}
+```
+
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/admin/me/role/` | Admin | Current admin role |

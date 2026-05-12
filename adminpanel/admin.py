@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import AdminReport, Ban, AdCampaign
+from .models import AdminReport, AdminRoleAssignment, Ban, AdCampaign
 
 
 @admin.register(AdminReport)

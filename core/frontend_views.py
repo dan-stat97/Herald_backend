@@ -5,6 +5,8 @@ from pathlib import Path
 from django.core.cache import cache
 from django.db import connection
 from django.db.models import Q
+from django.utils.html import escape
+from django.utils.safestring import mark_safe
 from django.views.generic import TemplateView
 from rest_framework import permissions
 from rest_framework.response import Response
@@ -285,6 +287,127 @@ class UnifiedSearchView(APIView):
 class ApiDocsView(TemplateView):
     template_name = "api/docs.html"
 
+    TABLE_SEPARATOR_RE = re.compile(r"^\|\s*[-:]+\s*(\|\s*[-:]+\s*)+\|?$")
+
+    def _render_markdown_block(self, text: str) -> str:
+        lines = text.splitlines()
+        html_parts = []
+        paragraph_buffer = []
+        list_buffer = []
+        list_tag = None
+        table_buffer = []
+        in_code = False
+        code_lines = []
+
+        def flush_paragraph():
+            nonlocal paragraph_buffer
+            if paragraph_buffer:
+                html_parts.append(f"<p>{escape(' '.join(part.strip() for part in paragraph_buffer if part.strip()))}</p>")
+                paragraph_buffer = []
+
+        def flush_list():
+            nonlocal list_buffer, list_tag
+            if list_buffer and list_tag:
+                items = ''.join(f"<li>{escape(item)}</li>" for item in list_buffer)
+                html_parts.append(f"<{list_tag}>{items}</{list_tag}>")
+            list_buffer = []
+            list_tag = None
+
+        def flush_table():
+            nonlocal table_buffer
+            if len(table_buffer) >= 2:
+                rows = []
+                header_cells = [cell.strip() for cell in table_buffer[0].strip().strip('|').split('|')]
+                body_rows = [
+                    [cell.strip() for cell in row.strip().strip('|').split('|')]
+                    for row in table_buffer[2:]
+                ]
+                head_html = ''.join(f"<th>{escape(cell)}</th>" for cell in header_cells)
+                rows.append(f"<thead><tr>{head_html}</tr></thead>")
+                if body_rows:
+                    body_html = ''.join(
+                        "<tr>" + ''.join(f"<td>{escape(cell)}</td>" for cell in row) + "</tr>"
+                        for row in body_rows
+                    )
+                    rows.append(f"<tbody>{body_html}</tbody>")
+                html_parts.append(f"<div class=\"table-wrap\"><table>{''.join(rows)}</table></div>")
+            else:
+                for row in table_buffer:
+                    paragraph_buffer.append(row)
+            table_buffer = []
+
+        for raw_line in lines:
+            line = raw_line.rstrip()
+            stripped = line.strip()
+
+            if stripped.startswith("```"):
+                flush_paragraph()
+                flush_list()
+                flush_table()
+                if in_code:
+                    html_parts.append(f"<pre><code>{escape(chr(10).join(code_lines))}</code></pre>")
+                    code_lines = []
+                    in_code = False
+                else:
+                    in_code = True
+                continue
+
+            if in_code:
+                code_lines.append(line)
+                continue
+
+            if stripped.startswith('|'):
+                flush_paragraph()
+                flush_list()
+                table_buffer.append(line)
+                continue
+
+            if table_buffer:
+                flush_table()
+
+            if not stripped:
+                flush_paragraph()
+                flush_list()
+                continue
+
+            unordered_match = re.match(r"^[-*]\s+(.*)$", stripped)
+            ordered_match = re.match(r"^\d+\.\s+(.*)$", stripped)
+            if unordered_match:
+                flush_paragraph()
+                if list_tag not in (None, 'ul'):
+                    flush_list()
+                list_tag = 'ul'
+                list_buffer.append(unordered_match.group(1))
+                continue
+            if ordered_match:
+                flush_paragraph()
+                if list_tag not in (None, 'ol'):
+                    flush_list()
+                list_tag = 'ol'
+                list_buffer.append(ordered_match.group(1))
+                continue
+
+            if stripped.startswith('### '):
+                flush_paragraph()
+                flush_list()
+                html_parts.append(f"<h4>{escape(stripped[4:].strip())}</h4>")
+                continue
+
+            if stripped.startswith('#### '):
+                flush_paragraph()
+                flush_list()
+                html_parts.append(f"<h5>{escape(stripped[5:].strip())}</h5>")
+                continue
+
+            paragraph_buffer.append(stripped)
+
+        if in_code:
+            html_parts.append(f"<pre><code>{escape(chr(10).join(code_lines))}</code></pre>")
+        flush_table()
+        flush_paragraph()
+        flush_list()
+        return mark_safe(''.join(html_parts))
+
     def _load_sections(self):
         docs_path = Path(__file__).resolve().parent.parent / "BACKEND_API_REFERENCE.md"
         content = docs_path.read_text(encoding="utf-8")
@@ -314,6 +437,9 @@ class ApiDocsView(TemplateView):
         if current:
             current["body"] = "\n".join(current["lines"]).strip()
             sections.append(current)
+
+        for section in sections:
+            section["html"] = self._render_markdown_block(section["body"])
 
         endpoint_count = sum(
             1
